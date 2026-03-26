@@ -39,75 +39,49 @@ interface TaxRecommendations {
   }
 }
 
-const DEFAULT_PORTFOLIO = [
-  { id: "1", name: "Reliance Industries", symbol: "RELIANCE", quantity: 50, avgBuyPrice: 2450, currentPrice: 2580, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString() },
-  { id: "2", name: "Tata Consultancy Services", symbol: "TCS", quantity: 25, avgBuyPrice: 3650, currentPrice: 3890, buyDate: new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString() },
-  { id: "3", name: "HDFC Bank", symbol: "HDFCBANK", quantity: 100, avgBuyPrice: 1580, currentPrice: 1620, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1, new Date().getMonth() - 1)).toISOString() },
-  { id: "4", name: "Infosys", symbol: "INFY", quantity: 75, avgBuyPrice: 1480, currentPrice: 1520, buyDate: new Date(new Date().setMonth(new Date().getMonth() - 3)).toISOString() },
-  { id: "5", name: "ICICI Bank", symbol: "ICICIBANK", quantity: 120, avgBuyPrice: 980, currentPrice: 1050, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 3)).toISOString() },
-  { id: "6", name: "Bharti Airtel", symbol: "BHARTIARTL", quantity: 60, avgBuyPrice: 1250, currentPrice: 1180, buyDate: new Date(new Date().setMonth(new Date().getMonth() - 8)).toISOString() },
-  { id: "7", name: "Hindustan Unilever", symbol: "HINDUNILVR", quantity: 40, avgBuyPrice: 2680, currentPrice: 2520, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1, new Date().getMonth() + 2)).toISOString() },
-  { id: "8", name: "State Bank of India", symbol: "SBIN", quantity: 200, avgBuyPrice: 620, currentPrice: 680, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1, new Date().getMonth() - 5)).toISOString() },
-]
-
-async function fetchTaxRecommendations(): Promise<TaxRecommendations> {
-  const assets = DEFAULT_PORTFOLIO.map(h => ({
-    stockName: h.symbol,
-    buyPrice: h.avgBuyPrice,
-    currentPrice: h.currentPrice,
-    buyDate: h.buyDate,
-    quantity: h.quantity
-  }))
-
+// Fetch stored AI results from DB (no AI call)
+async function fetchStoredResults(): Promise<TaxRecommendations> {
   try {
-    const [gainRes, lossRes] = await Promise.all([
-      fetchApi("/tax/harvest-gain", { method: "POST", body: JSON.stringify({ assets }) }).catch(() => null),
-      fetchApi("/tax/harvest-loss", { method: "POST", body: JSON.stringify({ assets }) }).catch(() => null)
-    ])
+    const res = await fetchApi("/tax/results")
 
-    const parseAI = (aiStrategy: any) => {
-      if (!aiStrategy || !aiStrategy.parsedJson) return { explanation: "No strategy available.", recommendations: [] }
-      return {
-        explanation: aiStrategy.parsedJson.explanation || aiStrategy.textExplanation || "",
-        recommendations: Array.isArray(aiStrategy.parsedJson.recommendations) ? aiStrategy.parsedJson.recommendations : []
-      }
-    }
-
-    const gainAI = gainRes ? parseAI(gainRes.aiStrategy) : { explanation: "", recommendations: [] }
-    const lossAI = lossRes ? parseAI(lossRes.aiStrategy) : { explanation: "", recommendations: [] }
+    const mapRecs = (recs: any[]) => (recs || []).map((r: any) => ({
+      stockName: r.stockName || "Unknown",
+      reason: r.reason || "",
+      action: r.action || "",
+      taxImpact: r.taxImpact || "",
+    }))
 
     return {
-      gainHarvesting: gainAI.recommendations.map((r: any) => ({
-        stockName: r.stockName || "Unknown",
-        reason: r.reason || r.explanation || "",
-      })),
-      lossHarvesting: lossAI.recommendations.map((r: any) => ({
-        stockName: r.stockName || "Unknown",
-        reason: r.reason || r.explanation || "",
-      })),
-      gainExplanation: gainAI.explanation,
-      lossExplanation: lossAI.explanation,
-      rawGain: gainRes,
-      rawLoss: lossRes,
+      gainHarvesting: mapRecs(res.gainHarvesting?.recommendations),
+      lossHarvesting: mapRecs(res.lossHarvesting?.recommendations),
+      gainExplanation: res.gainHarvesting?.explanation || "",
+      lossExplanation: res.lossHarvesting?.explanation || "",
+      rawGain: res.gainHarvesting,
+      rawLoss: res.lossHarvesting,
       summary: {
-        totalPotentialTaxSaved: 35200,
-        ltcgExemptionUsed: 82000,
-        ltcgExemptionLimit: 100000,
-        totalLossToBook: 12550,
+        totalPotentialTaxSaved: res.gainHarvesting?.summary?.totalPotentialTaxSaved || 0,
+        ltcgExemptionUsed: res.gainHarvesting?.summary?.ltcgExemptionUsed || 0,
+        ltcgExemptionLimit: res.gainHarvesting?.summary?.ltcgExemptionLimit || 100000,
+        totalLossToBook: res.lossHarvesting?.summary?.totalLossToBook || 0,
       },
     }
   } catch (error) {
-    console.error("Failed fetching tax recs", error)
+    console.error("Failed fetching stored results", error)
     return {
-      gainHarvesting: [],
-      lossHarvesting: [],
-      gainExplanation: "Failed to load recommendations.",
-      lossExplanation: "Failed to load recommendations.",
-      rawGain: null,
-      rawLoss: null,
+      gainHarvesting: [], lossHarvesting: [],
+      gainExplanation: "", lossExplanation: "",
+      rawGain: null, rawLoss: null,
       summary: { totalPotentialTaxSaved: 0, ltcgExemptionUsed: 0, ltcgExemptionLimit: 100000, totalLossToBook: 0 }
     }
   }
+}
+
+// Trigger AI analysis (reads portfolio from DB on the backend)
+async function runAnalysis(): Promise<void> {
+  await Promise.all([
+    fetchApi("/tax/harvest-gain", { method: "POST", body: JSON.stringify({}) }).catch(console.error),
+    fetchApi("/tax/harvest-loss", { method: "POST", body: JSON.stringify({}) }).catch(console.error),
+  ])
 }
 
 function formatCurrency(amount: number): string {
@@ -148,11 +122,12 @@ export function TaxSaverPage() {
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
 
   const loadData = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) setIsRefreshing(true)
     try {
-      const result = await fetchTaxRecommendations()
+      const result = await fetchStoredResults()
       setData(result)
       setLastUpdated(new Date())
     } catch (error) {
@@ -192,6 +167,23 @@ export function TaxSaverPage() {
               <span>Updated: {lastUpdated.toLocaleTimeString()}</span>
             </div>
           )}
+          <Button
+            variant="default"
+            size="sm"
+            disabled={isAnalyzing}
+            onClick={async () => {
+              setIsAnalyzing(true)
+              try {
+                await runAnalysis()
+                await loadData(true)
+              } finally {
+                setIsAnalyzing(false)
+              }
+            }}
+          >
+            <Sparkles className={cn("size-4 mr-2", isAnalyzing && "animate-pulse")} />
+            {isAnalyzing ? "Analyzing..." : "Run Analysis"}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => loadData(true)} disabled={isRefreshing}>
             <RefreshCw className={cn("size-4 mr-2", isRefreshing && "animate-spin")} />
             Refresh

@@ -1,7 +1,9 @@
 /**
  * tax.controller.js
- * Core controller logic mapping requests to services.
+ * Reads portfolio from DB, runs AI analysis, persists results.
  */
+const Portfolio = require('../models/Portfolio');
+const TaxAnalysis = require('../models/TaxAnalysis');
 const taxCalculatorService = require('../services/taxCalculator.service');
 const aiService = require('../services/ai.service');
 
@@ -23,29 +25,14 @@ YOUR DIRECTIVES:
 OUTPUT FORMAT:
 You must return exactly TWO sections. Do not include any extra conversational filler.
 
-📄 Explanation:
+Explanation:
 [Write 2-3 concise paragraphs of human-readable financial reasoning explaining why harvesting these specific losses is beneficial and how it reduces immediate tax liability.]
 
-📊 Structured Data:
-\`\`\`json
-[
-  {
-    "stockName": "[Name]",
-    "action": "SELL / HOLD",
-    "reason": "[1-sentence strategic reason, e.g., 'Harvesting this -$500 loss will offset your recent STCG']",
-    "taxImpact": "[Expected tax benefit, e.g., 'Reduces overall taxable gains']"
-  }
-]
-\`\`\`
+Structured Data:
+Return valid JSON with "explanation" and "recommendations" array. Each recommendation must have stockName, action, reason, taxImpact.
 `;
 
 const GAIN_HARVESTING_PROMPT = `
-### 2. Tax-Gain Harvesting System Prompt
-
-**When to trigger:** Backend detects highly profitable assets and the user wants to optimize profit booking against tax brackets.
-
-**Prompt Template:**
-\`\`\`text
 You are an Elite Wealth Management AI specializing in Capital Gains Optimization.
 
 CONTEXT:
@@ -63,133 +50,229 @@ YOUR DIRECTIVES:
 3. Explain the logic of timing the market strictly from a tax-efficiency standpoint.
 
 OUTPUT FORMAT:
-You must return exactly TWO sections. Do not include any extra conversational filler.
-
-📄 Explanation:
-[Write 2-3 concise paragraphs explaining the strategy, specifically focusing on the tax rate differences between STCG and LTCG, and why waiting or selling now makes financial sense.]
-
-📊 Structured Data:
-\`\`\`json
-[
-  {
-    "stockName": "[Name]",
-    "action": "SELL / HOLD / WAIT",
-    "reason": "[1-sentence strategic reason, e.g., 'Hold for 15 more days to qualify for the lower LTCG tax rate']",
-    "taxImpact": "[Expected tax benefit, e.g., 'Drops tax liability from 30% to 10%']"
-  }
-]
-\`\`\`
-(Ensure the JSON block is perfectly formatted and valid).
+Return valid JSON with "explanation" and "recommendations" array. Each recommendation must have stockName, action, reason, taxImpact.
 `;
 
 const GENERAL_ANALYSIS_PROMPT = `
 You are an expert tax advisor. 
 Analyze the overall portfolio and provide a summary of the tax implications (STCG vs LTCG exposure and overall unrealized profit/loss).
-Return exactly TWO parts in JSON format: 
-1. "explanation": a string explanation of the portfolio's general status.
-2. "recommendations": a JSON array of general recommendations to improve tax efficiency.
+Return valid JSON with "explanation" and "recommendations" array.
 `;
 
+/**
+ * Helper: get assets from DB for this user
+ */
+async function getUserAssets(userId) {
+  const portfolio = await Portfolio.findOne({ user: userId });
+  if (!portfolio || !portfolio.assets || portfolio.assets.length === 0) {
+    return null;
+  }
+  return portfolio.assets.map(a => ({
+    stockName: a.stockName,
+    symbol: a.symbol,
+    buyPrice: a.buyPrice,
+    currentPrice: a.currentPrice,
+    buyDate: a.buyDate,
+    quantity: a.quantity,
+  }));
+}
+
+/**
+ * Run full portfolio analysis, save to DB
+ */
 exports.analyzePortfolio = async (req, res) => {
   try {
-    const rawAssets = req.body.assets;
+    // Support both: body assets (legacy) or DB read (pipeline)
+    let rawAssets = req.body.assets;
+    if (!rawAssets && req.user) {
+      rawAssets = await getUserAssets(req.user.id);
+    }
     if (!rawAssets || rawAssets.length === 0) {
-      return res.status(400).json({ message: "No assets provided for analysis" });
+      return res.status(400).json({ message: 'No assets found. Sync your portfolio first.' });
     }
 
     const processedAssets = taxCalculatorService.calculateTaxParameters(rawAssets);
-    
-    // We remove some unnecessary metadata to save token costs
-    const cleanAssets = processedAssets.map(asset => ({
-      symbol: asset.symbol,
-      unrealizedPnL: asset.unrealizedPnL,
-      classification: asset.classification,
-      holdingDays: asset.holdingDays
+    const cleanAssets = processedAssets.map(a => ({
+      symbol: a.stockName, unrealizedPnL: a.unrealizedPnL,
+      classification: a.classification, holdingDays: a.holdingPeriod
     }));
 
     const aiStrategy = await aiService.getAIStrategy(GENERAL_ANALYSIS_PROMPT, cleanAssets);
 
-    return res.status(200).json({
-      success: true,
-      data: processedAssets,
-      aiStrategy
-    });
+    // Save to DB if user is authenticated
+    if (req.user) {
+      await TaxAnalysis.findOneAndUpdate(
+        { user: req.user.id, type: 'general' },
+        {
+          user: req.user.id,
+          type: 'general',
+          eligibleAssets: processedAssets,
+          aiExplanation: aiStrategy.textExplanation,
+          aiRecommendations: Array.isArray(aiStrategy.parsedJson) ? aiStrategy.parsedJson : [],
+          createdAt: Date.now(),
+        },
+        { upsert: true, new: true }
+      );
+    }
+
+    return res.status(200).json({ success: true, data: processedAssets, aiStrategy });
   } catch (error) {
-    console.error("analyzePortfolio error:", error);
+    console.error('analyzePortfolio error:', error);
     res.status(500).json({ message: error.message });
   }
 };
 
+/**
+ * Tax-Loss Harvesting: filter losses, run AI, save to DB
+ */
 exports.harvestLoss = async (req, res) => {
   try {
-    const rawAssets = req.body.assets; 
-    if (!rawAssets) return res.status(400).json({ message: "No assets provided" });
+    let rawAssets = req.body.assets;
+    if (!rawAssets && req.user) {
+      rawAssets = await getUserAssets(req.user.id);
+    }
+    if (!rawAssets) return res.status(400).json({ message: 'No assets found. Sync your portfolio first.' });
 
     const processedAssets = taxCalculatorService.calculateTaxParameters(rawAssets);
-    const lossAssets = processedAssets.filter(asset => asset.unrealizedPnL < 0);
-    
+    const lossAssets = processedAssets.filter(a => a.unrealizedPnL < 0);
+
     if (lossAssets.length === 0) {
+      // Save empty result
+      if (req.user) {
+        await TaxAnalysis.findOneAndUpdate(
+          { user: req.user.id, type: 'loss-harvest' },
+          { user: req.user.id, type: 'loss-harvest', eligibleAssets: [], aiExplanation: 'No losses to harvest.', aiRecommendations: [], createdAt: Date.now() },
+          { upsert: true, new: true }
+        );
+      }
       return res.status(200).json({
-        success: true,
-        eligibleAssets: [],
-        message: "No loss-making assets available for tax-loss harvesting.",
-        aiStrategy: { textExplanation: "No losses to harvest.", parsedJson: [] }
+        success: true, eligibleAssets: [],
+        message: 'No loss-making assets available for tax-loss harvesting.',
+        aiStrategy: { textExplanation: 'No losses to harvest.', parsedJson: [] }
       });
     }
 
-    const cleanAssets = lossAssets.map(asset => ({
-      symbol: asset.symbol,
-      unrealizedPnL: asset.unrealizedPnL,
-      classification: asset.classification,
-      holdingDays: asset.holdingDays
+    const cleanAssets = lossAssets.map(a => ({
+      symbol: a.stockName, unrealizedPnL: a.unrealizedPnL,
+      classification: a.classification, holdingDays: a.holdingPeriod
     }));
 
     const aiStrategy = await aiService.getAIStrategy(LOSS_HARVESTING_PROMPT, cleanAssets);
 
-    return res.status(200).json({
-      success: true,
-      eligibleAssets: lossAssets,
-      aiStrategy
-    });
+    // Persist AI results
+    const totalLoss = lossAssets.reduce((sum, a) => sum + Math.abs(a.unrealizedPnL), 0);
+    if (req.user) {
+      await TaxAnalysis.findOneAndUpdate(
+        { user: req.user.id, type: 'loss-harvest' },
+        {
+          user: req.user.id,
+          type: 'loss-harvest',
+          eligibleAssets: lossAssets,
+          aiExplanation: aiStrategy.textExplanation,
+          aiRecommendations: Array.isArray(aiStrategy.parsedJson) ? aiStrategy.parsedJson : [],
+          summary: { totalLossToBook: totalLoss },
+          createdAt: Date.now(),
+        },
+        { upsert: true, new: true }
+      );
+    }
+
+    return res.status(200).json({ success: true, eligibleAssets: lossAssets, aiStrategy });
   } catch (error) {
-    console.error("harvestLoss error:", error);
+    console.error('harvestLoss error:', error);
     res.status(500).json({ message: error.message });
   }
 };
 
+/**
+ * Tax-Gain Harvesting: filter LTCG profits, run AI, save to DB
+ */
 exports.harvestGain = async (req, res) => {
   try {
-    const rawAssets = req.body.assets;
-    if (!rawAssets) return res.status(400).json({ message: "No assets provided" });
+    let rawAssets = req.body.assets;
+    if (!rawAssets && req.user) {
+      rawAssets = await getUserAssets(req.user.id);
+    }
+    if (!rawAssets) return res.status(400).json({ message: 'No assets found. Sync your portfolio first.' });
 
     const processedAssets = taxCalculatorService.calculateTaxParameters(rawAssets);
-    const profitableLTCGAssets = processedAssets.filter(asset => asset.classification === 'LTCG' && asset.unrealizedPnL > 0);
-    
-    if (profitableLTCGAssets.length === 0) {
+    const profitableAssets = processedAssets.filter(a => a.classification === 'LTCG' && a.unrealizedPnL > 0);
+
+    if (profitableAssets.length === 0) {
+      if (req.user) {
+        await TaxAnalysis.findOneAndUpdate(
+          { user: req.user.id, type: 'gain-harvest' },
+          { user: req.user.id, type: 'gain-harvest', eligibleAssets: [], aiExplanation: 'No eligible LTCG profits to harvest.', aiRecommendations: [], createdAt: Date.now() },
+          { upsert: true, new: true }
+        );
+      }
       return res.status(200).json({
-        success: true,
-        eligibleAssets: [],
-        message: "No profitable LTCG assets available for tax-gain harvesting.",
-        aiStrategy: { textExplanation: "No eligible LTCG profits to harvest.", parsedJson: [] }
+        success: true, eligibleAssets: [],
+        message: 'No profitable LTCG assets available for tax-gain harvesting.',
+        aiStrategy: { textExplanation: 'No eligible LTCG profits to harvest.', parsedJson: [] }
       });
     }
 
-    const cleanAssets = profitableLTCGAssets.map(asset => ({
-      symbol: asset.symbol,
-      unrealizedPnL: asset.unrealizedPnL,
-      classification: asset.classification,
-      holdingDays: asset.holdingDays
+    const cleanAssets = profitableAssets.map(a => ({
+      symbol: a.stockName, unrealizedPnL: a.unrealizedPnL,
+      classification: a.classification, holdingDays: a.holdingPeriod
     }));
 
     const aiStrategy = await aiService.getAIStrategy(GAIN_HARVESTING_PROMPT, cleanAssets);
 
+    const totalGain = profitableAssets.reduce((sum, a) => sum + a.unrealizedPnL, 0);
+    if (req.user) {
+      await TaxAnalysis.findOneAndUpdate(
+        { user: req.user.id, type: 'gain-harvest' },
+        {
+          user: req.user.id,
+          type: 'gain-harvest',
+          eligibleAssets: profitableAssets,
+          aiExplanation: aiStrategy.textExplanation,
+          aiRecommendations: Array.isArray(aiStrategy.parsedJson) ? aiStrategy.parsedJson : [],
+          summary: { ltcgExemptionUsed: Math.min(totalGain, 100000), ltcgExemptionLimit: 100000, totalPotentialTaxSaved: Math.min(totalGain, 100000) * 0.1 },
+          createdAt: Date.now(),
+        },
+        { upsert: true, new: true }
+      );
+    }
+
+    return res.status(200).json({ success: true, eligibleAssets: profitableAssets, aiStrategy });
+  } catch (error) {
+    console.error('harvestGain error:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * GET stored AI analysis results from DB (no AI call)
+ */
+exports.getResults = async (req, res) => {
+  try {
+    const results = await TaxAnalysis.find({ user: req.user.id }).sort({ createdAt: -1 });
+
+    const gainResult = results.find(r => r.type === 'gain-harvest');
+    const lossResult = results.find(r => r.type === 'loss-harvest');
+
     return res.status(200).json({
       success: true,
-      eligibleAssets: profitableLTCGAssets,
-      aiStrategy
+      gainHarvesting: {
+        explanation: gainResult?.aiExplanation || '',
+        recommendations: gainResult?.aiRecommendations || [],
+        eligibleAssets: gainResult?.eligibleAssets || [],
+        summary: gainResult?.summary || {},
+        analyzedAt: gainResult?.createdAt || null,
+      },
+      lossHarvesting: {
+        explanation: lossResult?.aiExplanation || '',
+        recommendations: lossResult?.aiRecommendations || [],
+        eligibleAssets: lossResult?.eligibleAssets || [],
+        summary: lossResult?.summary || {},
+        analyzedAt: lossResult?.createdAt || null,
+      },
     });
   } catch (error) {
-    console.error("harvestGain error:", error);
+    console.error('getResults error:', error);
     res.status(500).json({ message: error.message });
   }
 };

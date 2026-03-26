@@ -5,6 +5,10 @@ const AssetSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  symbol: {
+    type: String,
+    default: '',
+  },
   buyPrice: {
     type: Number,
     required: true,

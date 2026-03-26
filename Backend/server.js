@@ -4,6 +4,7 @@ const connectDB = require('./config/db');
 const taxRoutes = require('./routes/tax.routes');
 const authRoutes = require('./routes/auth.routes');
 const aiRoutes = require('./routes/ai.routes');
+const portfolioRoutes = require('./routes/portfolio.routes');
 require('dotenv').config();
 
 const app = express();
@@ -19,6 +20,7 @@ app.use(express.json({ extended: false }));
 app.use('/api/tax', taxRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/portfolio', portfolioRoutes);
 
 // API Dashboard
 app.get('/', (req, res) => {
@@ -57,6 +59,7 @@ app.get('/', (req, res) => {
     .footer { text-align: center; color: #475569; font-size: 0.75rem; margin-top: 3rem; }
     .footer a { color: #64748b; text-decoration: none; }
     .footer a:hover { color: #94a3b8; }
+    .badge { font-size: 0.6rem; background: #7c3aed; color: #fff; padding: 0.15rem 0.4rem; border-radius: 4px; margin-left: 0.5rem; }
     @media (max-width: 640px) { .desc { display: none; } }
   </style>
 </head>
@@ -67,7 +70,7 @@ app.get('/', (req, res) => {
         <div class="logo-icon">&#x1F4C8;</div>
         <h1>TaxSmart AI</h1>
       </div>
-      <p class="subtitle">Backend API Server &bull; v1.0.0</p>
+      <p class="subtitle">Backend API Server &bull; v2.0.0</p>
       <div class="status"><span class="dot"></span> Server is running on port ${process.env.PORT || 5000}</div>
     </div>
 
@@ -102,26 +105,51 @@ app.get('/', (req, res) => {
     </div>
 
     <div class="section">
+      <div class="section-title">&#x1F4BC; Portfolio <span class="badge">NEW</span></div>
+      <div class="card">
+        <div class="endpoint" onclick="copyEndpoint('/api/portfolio/sync')">
+          <span class="method method-post">POST</span>
+          <span class="path">/api/portfolio/sync</span>
+          <span class="desc">Sync broker holdings</span>
+          <span class="arrow">&rarr;</span>
+        </div>
+        <a class="endpoint" href="/api/portfolio" target="_blank">
+          <span class="method method-get">GET</span>
+          <span class="path">/api/portfolio</span>
+          <span class="desc">Get saved portfolio</span>
+          <span class="arrow">&rarr;</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="section">
       <div class="section-title">&#x1F4CA; Tax Analysis</div>
       <div class="card">
         <div class="endpoint" onclick="copyEndpoint('/api/tax/analyze')">
           <span class="method method-post">POST</span>
           <span class="path">/api/tax/analyze</span>
-          <span class="desc">Analyze portfolio</span>
+          <span class="desc">Run full analysis + AI</span>
           <span class="arrow">&rarr;</span>
         </div>
         <div class="endpoint" onclick="copyEndpoint('/api/tax/harvest-loss')">
           <span class="method method-post">POST</span>
           <span class="path">/api/tax/harvest-loss</span>
-          <span class="desc">Loss harvesting strategy</span>
+          <span class="desc">Loss harvesting + save</span>
           <span class="arrow">&rarr;</span>
         </div>
         <div class="endpoint" onclick="copyEndpoint('/api/tax/harvest-gain')">
           <span class="method method-post">POST</span>
           <span class="path">/api/tax/harvest-gain</span>
-          <span class="desc">Gain harvesting strategy</span>
+          <span class="desc">Gain harvesting + save</span>
           <span class="arrow">&rarr;</span>
         </div>
+        <a class="endpoint" href="/api/tax/results" target="_blank">
+          <span class="method method-get">GET</span>
+          <span class="path">/api/tax/results</span>
+          <span class="desc">Read stored AI results</span>
+          <span class="badge">NEW</span>
+          <span class="arrow">&rarr;</span>
+        </a>
       </div>
     </div>
 
@@ -131,7 +159,7 @@ app.get('/', (req, res) => {
         <div class="endpoint" onclick="copyEndpoint('/api/ai/explain')">
           <span class="method method-post">POST</span>
           <span class="path">/api/ai/explain</span>
-          <span class="desc">Explain a recommended action</span>
+          <span class="desc">Explain a recommendation</span>
           <span class="arrow">&rarr;</span>
         </div>
       </div>
@@ -161,4 +189,4 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
+app.listen(PORT, () => console.log('Server started on port ' + PORT));
