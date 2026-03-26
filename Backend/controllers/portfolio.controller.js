@@ -1,56 +1,112 @@
 const Portfolio = require('../models/Portfolio');
+const angeloneService = require('../services/angelone.service');
+
+const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000; // milliseconds
 
 /**
- * Sync portfolio from broker data (AngelOne, manual upload, etc.)
- * Accepts raw holdings array → normalizes → upserts into DB
+ * Helper: Check if portfolio data is fresh (< 24 hours old)
  */
-exports.syncPortfolio = async (req, res) => {
+function isDataFresh(portfolio) {
+  if (!portfolio || !portfolio.lastSyncedAt) return false;
+  const age = Date.now() - new Date(portfolio.lastSyncedAt).getTime();
+  return age < TWENTY_FOUR_HOURS;
+}
+
+/**
+ * Helper: Fetch from AngelOne, normalize, and upsert into DB
+ */
+async function fetchAndUpsert(userId) {
+  // Fetch raw holdings from AngelOne API
+  const rawHoldings = await angeloneService.fetchHoldings();
+
+  // Normalize to our schema
+  const normalizedHoldings = angeloneService.normalizeHoldings(rawHoldings);
+
+  // Upsert into DB
+  const portfolio = await Portfolio.findOneAndUpdate(
+    { user: userId },
+    {
+      user: userId,
+      holdings: normalizedHoldings,
+      lastSyncedAt: new Date(),
+      updatedAt: new Date(),
+    },
+    { upsert: true, new: true }
+  );
+
+  return portfolio;
+}
+
+/**
+ * GET /api/portfolio
+ * Get user's portfolio with 24-hour cache logic.
+ * - If data is < 24 hours old: return from DB
+ * - If data is >= 24 hours old or doesn't exist: fetch from AngelOne, store, and return
+ */
+exports.getPortfolio = async (req, res) => {
   try {
-    const { assets } = req.body;
-    if (!assets || !Array.isArray(assets) || assets.length === 0) {
-      return res.status(400).json({ message: 'No assets provided for sync' });
+    // Check if we have fresh data in DB
+    const existing = await Portfolio.findOne({ user: req.user.id });
+
+    if (existing && isDataFresh(existing)) {
+      // Data is fresh — serve from DB
+      return res.status(200).json({
+        success: true,
+        source: 'cache',
+        portfolio: existing,
+      });
     }
 
-    // Normalize broker data into our schema
-    const normalizedAssets = assets.map(a => ({
-      stockName: a.stockName || a.tradingsymbol || a.symbol || a.name || 'Unknown',
-      symbol: a.symbol || a.tradingsymbol || a.stockName || '',
-      buyPrice: Number(a.buyPrice || a.averageprice || a.avgBuyPrice || 0),
-      currentPrice: Number(a.currentPrice || a.ltp || a.lastprice || 0),
-      buyDate: a.buyDate || a.orderdate || new Date().toISOString(),
-      quantity: Number(a.quantity || a.qty || 0),
-    }));
-
-    // Upsert: replace the user's entire portfolio
-    const portfolio = await Portfolio.findOneAndUpdate(
-      { user: req.user.id },
-      { user: req.user.id, assets: normalizedAssets, updatedAt: Date.now() },
-      { upsert: true, new: true }
-    );
-
-    return res.status(200).json({
-      success: true,
-      message: `Portfolio synced with ${normalizedAssets.length} assets`,
-      portfolio
-    });
+    // Data is stale or doesn't exist — fetch from AngelOne
+    try {
+      const portfolio = await fetchAndUpsert(req.user.id);
+      return res.status(200).json({
+        success: true,
+        source: 'angelone',
+        portfolio,
+      });
+    } catch (apiError) {
+      // If AngelOne API fails but we have stale data, return stale data with a warning
+      if (existing) {
+        return res.status(200).json({
+          success: true,
+          source: 'cache_stale',
+          warning: 'AngelOne API call failed. Showing cached data.',
+          apiError: apiError.message,
+          portfolio: existing,
+        });
+      }
+      // No data at all
+      return res.status(200).json({
+        success: true,
+        source: 'empty',
+        holdings: [],
+        message: 'No portfolio data found. Please configure your AngelOne credentials and sync.',
+        apiError: apiError.message,
+      });
+    }
   } catch (error) {
-    console.error('syncPortfolio error:', error);
+    console.error('getPortfolio error:', error);
     res.status(500).json({ message: error.message });
   }
 };
 
 /**
- * Get the user's saved portfolio from DB
+ * POST /api/portfolio/sync
+ * Force-sync portfolio from AngelOne API (ignores cache age).
+ * Always calls the API, upserts into DB, and returns fresh data.
  */
-exports.getPortfolio = async (req, res) => {
+exports.syncPortfolio = async (req, res) => {
   try {
-    const portfolio = await Portfolio.findOne({ user: req.user.id });
-    if (!portfolio) {
-      return res.status(200).json({ success: true, assets: [], message: 'No portfolio found. Sync your broker data first.' });
-    }
-    return res.status(200).json({ success: true, portfolio });
+    const portfolio = await fetchAndUpsert(req.user.id);
+
+    return res.status(200).json({
+      success: true,
+      message: `Portfolio synced with ${portfolio.holdings.length} holdings from AngelOne`,
+      portfolio,
+    });
   } catch (error) {
-    console.error('getPortfolio error:', error);
+    console.error('syncPortfolio error:', error);
     res.status(500).json({ message: error.message });
   }
 };

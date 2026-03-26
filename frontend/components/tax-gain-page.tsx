@@ -16,16 +16,7 @@ interface Recommendation {
   reason: string
 }
 
-const DEFAULT_PORTFOLIO = [
-  { symbol: "RELIANCE", avgBuyPrice: 2450, currentPrice: 2580, quantity: 50, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString() },
-  { symbol: "TCS", avgBuyPrice: 3650, currentPrice: 3890, quantity: 25, buyDate: new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString() },
-  { symbol: "HDFCBANK", avgBuyPrice: 1580, currentPrice: 1620, quantity: 100, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1, new Date().getMonth() - 1)).toISOString() },
-  { symbol: "INFY", avgBuyPrice: 1480, currentPrice: 1520, quantity: 75, buyDate: new Date(new Date().setMonth(new Date().getMonth() - 3)).toISOString() },
-  { symbol: "ICICIBANK", avgBuyPrice: 980, currentPrice: 1050, quantity: 120, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 3)).toISOString() },
-  { symbol: "BHARTIARTL", avgBuyPrice: 1250, currentPrice: 1180, quantity: 60, buyDate: new Date(new Date().setMonth(new Date().getMonth() - 8)).toISOString() },
-  { symbol: "HINDUNILVR", avgBuyPrice: 2680, currentPrice: 2520, quantity: 40, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1, new Date().getMonth() + 2)).toISOString() },
-  { symbol: "SBIN", avgBuyPrice: 620, currentPrice: 680, quantity: 200, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1, new Date().getMonth() - 5)).toISOString() },
-]
+
 
 function JsonBlock({ data }: { data: any }) {
   const [open, setOpen] = useState(false)
@@ -62,12 +53,9 @@ export function TaxGainPage() {
 
   const loadData = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) setIsRefreshing(true)
-    const assets = DEFAULT_PORTFOLIO.map(h => ({
-      stockName: h.symbol, buyPrice: h.avgBuyPrice,
-      currentPrice: h.currentPrice, buyDate: h.buyDate, quantity: h.quantity,
-    }))
     try {
-      const res = await fetchApi("/tax/harvest-gain", { method: "POST", body: JSON.stringify({ assets }) })
+      // Send empty body — backend reads portfolio from DB for this user
+      const res = await fetchApi("/tax/harvest-gain", { method: "POST", body: JSON.stringify({}) })
       setRawData(res)
       const ai = res?.aiStrategy
       if (ai?.parsedJson) {

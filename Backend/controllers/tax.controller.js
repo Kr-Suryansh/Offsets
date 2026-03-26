@@ -60,21 +60,27 @@ Return valid JSON with "explanation" and "recommendations" array.
 `;
 
 /**
- * Helper: get assets from DB for this user
+ * Helper: get assets from DB for this user.
+ * Maps new HoldingSchema fields → legacy format expected by taxCalculator.
  */
 async function getUserAssets(userId) {
   const portfolio = await Portfolio.findOne({ user: userId });
-  if (!portfolio || !portfolio.assets || portfolio.assets.length === 0) {
+  if (!portfolio || !portfolio.holdings || portfolio.holdings.length === 0) {
     return null;
   }
-  return portfolio.assets.map(a => ({
-    stockName: a.stockName,
-    symbol: a.symbol,
-    buyPrice: a.buyPrice,
-    currentPrice: a.currentPrice,
-    buyDate: a.buyDate,
-    quantity: a.quantity,
-  }));
+  return portfolio.holdings.map(h => {
+    // Derive currentPrice from averagePrice and profitandloss
+    const qty = h.quantity || 1;
+    const currentPrice = h.averagePrice + (h.profitandloss / qty);
+    return {
+      stockName: h.tradingSymbol,
+      symbol: h.tradingSymbol,
+      buyPrice: h.averagePrice,
+      currentPrice: currentPrice,
+      buyDate: h.dateOfPurchase,
+      quantity: h.quantity,
+    };
+  });
 }
 
 /**
