@@ -18,30 +18,24 @@ import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
 interface GainHarvestingRecommendation {
-  id: string
   stockName: string
-  symbol: string
-  suggestedSellQty: number
-  currentPrice: number
-  buyPrice: number
-  expectedTaxSaved: number
-  holdingPeriod: string
+  action: string
+  reason: string
+  taxImpact: string
 }
 
 interface LossHarvestingRecommendation {
-  id: string
   stockName: string
-  symbol: string
-  suggestedSellQty: number
-  currentPrice: number
-  buyPrice: number
-  lossToBook: number
-  potentialOffset: number
+  action: string
+  reason: string
+  taxImpact: string
 }
 
 interface TaxRecommendations {
   gainHarvesting: GainHarvestingRecommendation[]
   lossHarvesting: LossHarvestingRecommendation[]
+  gainExplanation: string
+  lossExplanation: string
   summary: {
     totalPotentialTaxSaved: number
     ltcgExemptionUsed: number
@@ -50,92 +44,79 @@ interface TaxRecommendations {
   }
 }
 
-// Simulates an API call to fetch tax recommendations
-async function fetchTaxRecommendations(): Promise<TaxRecommendations> {
-  // Simulate network delay
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+import { fetchApi } from "@/lib/api"
 
-  return {
-    gainHarvesting: [
-      {
-        id: "1",
-        stockName: "HDFC Bank",
-        symbol: "HDFCBANK",
-        suggestedSellQty: 40,
-        currentPrice: 1650,
-        buyPrice: 1420,
-        expectedTaxSaved: 9200,
-        holdingPeriod: "18 months",
+// We use the same DEFAULT_PORTFOLIO constructed similarly to portfolio-page
+const DEFAULT_PORTFOLIO = [
+  { id: "1", name: "Reliance Industries", symbol: "RELIANCE", quantity: 50, avgBuyPrice: 2450, currentPrice: 2580, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString() },
+  { id: "2", name: "Tata Consultancy Services", symbol: "TCS", quantity: 25, avgBuyPrice: 3650, currentPrice: 3890, buyDate: new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString() },
+  { id: "3", name: "HDFC Bank", symbol: "HDFCBANK", quantity: 100, avgBuyPrice: 1580, currentPrice: 1620, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1, new Date().getMonth() - 1)).toISOString() },
+  { id: "4", name: "Infosys", symbol: "INFY", quantity: 75, avgBuyPrice: 1480, currentPrice: 1520, buyDate: new Date(new Date().setMonth(new Date().getMonth() - 3)).toISOString() },
+  { id: "5", name: "ICICI Bank", symbol: "ICICIBANK", quantity: 120, avgBuyPrice: 980, currentPrice: 1050, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 3)).toISOString() },
+  { id: "6", name: "Bharti Airtel", symbol: "BHARTIARTL", quantity: 60, avgBuyPrice: 1250, currentPrice: 1180, buyDate: new Date(new Date().setMonth(new Date().getMonth() - 8)).toISOString() },
+  { id: "7", name: "Hindustan Unilever", symbol: "HINDUNILVR", quantity: 40, avgBuyPrice: 2680, currentPrice: 2520, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1, new Date().getMonth() + 2)).toISOString() },
+  { id: "8", name: "State Bank of India", symbol: "SBIN", quantity: 200, avgBuyPrice: 620, currentPrice: 680, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1, new Date().getMonth() - 5)).toISOString() },
+]
+
+
+// Simulates an API call to fetch tax recommendations by calling real backend
+async function fetchTaxRecommendations(): Promise<TaxRecommendations> {
+  const assets = DEFAULT_PORTFOLIO.map(h => ({
+    stockName: h.symbol,
+    buyPrice: h.avgBuyPrice,
+    currentPrice: h.currentPrice,
+    buyDate: h.buyDate,
+    quantity: h.quantity
+  }))
+
+  try {
+    const [gainRes, lossRes] = await Promise.all([
+      fetchApi("/tax/harvest-gain", { method: "POST", body: JSON.stringify({ assets }) }).catch(() => null),
+      fetchApi("/tax/harvest-loss", { method: "POST", body: JSON.stringify({ assets }) }).catch(() => null)
+    ])
+
+    const parseAI = (aiStrategy: any) => {
+      if (!aiStrategy || !aiStrategy.parsedJson) return { explanation: "No strategy available.", recommendations: [] }
+      return {
+        explanation: aiStrategy.parsedJson.explanation || aiStrategy.textExplanation || "",
+        recommendations: Array.isArray(aiStrategy.parsedJson.recommendations) ? aiStrategy.parsedJson.recommendations : []
+      }
+    }
+
+    const gainAI = gainRes ? parseAI(gainRes.aiStrategy) : { explanation: "", recommendations: [] }
+    const lossAI = lossRes ? parseAI(lossRes.aiStrategy) : { explanation: "", recommendations: [] }
+
+    return {
+      gainHarvesting: gainAI.recommendations.map((r: any) => ({
+        stockName: r.stockName || "Unknown",
+        action: r.action || "HOLD",
+        reason: r.reason || r.explanation || "",
+        taxImpact: r.taxImpact || r.estimatedBenefit || ""
+      })),
+      lossHarvesting: lossAI.recommendations.map((r: any) => ({
+        stockName: r.stockName || "Unknown",
+        action: r.action || "HOLD",
+        reason: r.reason || r.explanation || "",
+        taxImpact: r.taxImpact || r.estimatedBenefit || ""
+      })),
+      gainExplanation: gainAI.explanation,
+      lossExplanation: lossAI.explanation,
+      summary: {
+        totalPotentialTaxSaved: 35200,
+        ltcgExemptionUsed: 82000,
+        ltcgExemptionLimit: 100000,
+        totalLossToBook: 12550,
       },
-      {
-        id: "2",
-        stockName: "State Bank of India",
-        symbol: "SBIN",
-        suggestedSellQty: 100,
-        currentPrice: 695,
-        buyPrice: 580,
-        expectedTaxSaved: 11500,
-        holdingPeriod: "24 months",
-      },
-      {
-        id: "3",
-        stockName: "ICICI Bank",
-        symbol: "ICICIBANK",
-        suggestedSellQty: 60,
-        currentPrice: 1075,
-        buyPrice: 920,
-        expectedTaxSaved: 9300,
-        holdingPeriod: "15 months",
-      },
-      {
-        id: "4",
-        stockName: "Tata Consultancy Services",
-        symbol: "TCS",
-        suggestedSellQty: 10,
-        currentPrice: 3920,
-        buyPrice: 3400,
-        expectedTaxSaved: 5200,
-        holdingPeriod: "20 months",
-      },
-    ],
-    lossHarvesting: [
-      {
-        id: "1",
-        stockName: "Bharti Airtel",
-        symbol: "BHARTIARTL",
-        suggestedSellQty: 30,
-        currentPrice: 1165,
-        buyPrice: 1280,
-        lossToBook: 3450,
-        potentialOffset: 3450,
-      },
-      {
-        id: "2",
-        stockName: "Hindustan Unilever",
-        symbol: "HINDUNILVR",
-        suggestedSellQty: 20,
-        currentPrice: 2490,
-        buyPrice: 2720,
-        lossToBook: 4600,
-        potentialOffset: 4600,
-      },
-      {
-        id: "3",
-        stockName: "Asian Paints",
-        symbol: "ASIANPAINT",
-        suggestedSellQty: 15,
-        currentPrice: 2850,
-        buyPrice: 3150,
-        lossToBook: 4500,
-        potentialOffset: 4500,
-      },
-    ],
-    summary: {
-      totalPotentialTaxSaved: 35200,
-      ltcgExemptionUsed: 82000,
-      ltcgExemptionLimit: 100000,
-      totalLossToBook: 12550,
-    },
+    }
+  } catch (error) {
+    console.error("Failed fetching tax recs", error)
+    return {
+      gainHarvesting: [],
+      lossHarvesting: [],
+      gainExplanation: "Failed to load",
+      lossExplanation: "Failed to load",
+      summary: { totalPotentialTaxSaved: 0, ltcgExemptionUsed: 0, ltcgExemptionLimit: 100000, totalLossToBook: 0 }
+    }
   }
 }
 
@@ -324,43 +305,41 @@ export function TaxSaverPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Stock</TableHead>
-                    <TableHead className="text-right">Sell Qty</TableHead>
-                    <TableHead className="text-right">Buy Price</TableHead>
-                    <TableHead className="text-right">Current Price</TableHead>
-                    <TableHead className="text-right">Holding Period</TableHead>
-                    <TableHead className="text-right">Tax Saved</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                    <TableHead className="text-right">Reason</TableHead>
+                    <TableHead className="text-right">Tax Impact</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.gainHarvesting.map((rec) => (
-                    <TableRow key={rec.id}>
+                  {data.gainHarvesting.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                        No gain harvesting opportunities found.
+                      </TableCell>
+                    </TableRow>
+                  ) : data.gainHarvesting.map((rec, i) => (
+                    <TableRow key={i}>
                       <TableCell>
-                        <div>
-                          <div className="font-medium">{rec.symbol}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {rec.stockName}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {rec.suggestedSellQty}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatCurrency(rec.buyPrice)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatCurrency(rec.currentPrice)}
+                        <div className="font-medium">{rec.stockName}</div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Badge variant="secondary">{rec.holdingPeriod}</Badge>
+                        <Badge variant="secondary">{rec.action}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {rec.reason}
                       </TableCell>
                       <TableCell className="text-right font-mono font-medium text-profit">
-                        {formatCurrency(rec.expectedTaxSaved)}
+                        {rec.taxImpact}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              {data.gainExplanation && (
+                <div className="mt-4 p-4 bg-muted/30 rounded-lg text-sm">
+                  <strong>AI Strategy Insight:</strong> {data.gainExplanation}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -382,43 +361,41 @@ export function TaxSaverPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Stock</TableHead>
-                    <TableHead className="text-right">Sell Qty</TableHead>
-                    <TableHead className="text-right">Buy Price</TableHead>
-                    <TableHead className="text-right">Current Price</TableHead>
-                    <TableHead className="text-right">Loss to Book</TableHead>
-                    <TableHead className="text-right">Potential Offset</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                    <TableHead className="text-right">Reason</TableHead>
+                    <TableHead className="text-right">Tax Impact</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.lossHarvesting.map((rec) => (
-                    <TableRow key={rec.id}>
+                  {data.lossHarvesting.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                        No loss harvesting opportunities found.
+                      </TableCell>
+                    </TableRow>
+                  ) : data.lossHarvesting.map((rec, i) => (
+                    <TableRow key={i}>
                       <TableCell>
-                        <div>
-                          <div className="font-medium">{rec.symbol}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {rec.stockName}
-                          </div>
-                        </div>
+                        <div className="font-medium">{rec.stockName}</div>
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {rec.suggestedSellQty}
+                        <Badge variant="secondary">{rec.action}</Badge>
                       </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatCurrency(rec.buyPrice)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatCurrency(rec.currentPrice)}
+                      <TableCell className="text-right text-muted-foreground">
+                        {rec.reason}
                       </TableCell>
                       <TableCell className="text-right font-mono font-medium text-loss">
-                        -{formatCurrency(rec.lossToBook)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono font-medium text-profit">
-                        {formatCurrency(rec.potentialOffset)}
+                        {rec.taxImpact}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              {data.lossExplanation && (
+                <div className="mt-4 p-4 bg-muted/30 rounded-lg text-sm">
+                  <strong>AI Strategy Insight:</strong> {data.lossExplanation}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

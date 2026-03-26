@@ -15,6 +15,8 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
+import { fetchApi } from "@/lib/api"
+
 interface Holding {
   id: string
   name: string
@@ -22,6 +24,7 @@ interface Holding {
   quantity: number
   avgBuyPrice: number
   currentPrice: number
+  buyDate?: string // Added for tax calculation
 }
 
 interface PortfolioData {
@@ -32,85 +35,114 @@ interface PortfolioData {
   }
 }
 
-// Simulates an API call to fetch market data
+// Default portfolio to send for analysis
+const DEFAULT_PORTFOLIO: Holding[] = [
+  {
+    id: "1",
+    name: "Reliance Industries",
+    symbol: "RELIANCE",
+    quantity: 50,
+    avgBuyPrice: 2450,
+    currentPrice: 2580,
+    buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString(), // 2 years ago (LTCG)
+  },
+  {
+    id: "2",
+    name: "Tata Consultancy Services",
+    symbol: "TCS",
+    quantity: 25,
+    avgBuyPrice: 3650,
+    currentPrice: 3890,
+    buyDate: new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString(), // 6 months ago (STCG)
+  },
+  {
+    id: "3",
+    name: "HDFC Bank",
+    symbol: "HDFCBANK",
+    quantity: 100,
+    avgBuyPrice: 1580,
+    currentPrice: 1620,
+    buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1, new Date().getMonth() - 1)).toISOString(), // 13 months ago (LTCG)
+  },
+  {
+    id: "4",
+    name: "Infosys",
+    symbol: "INFY",
+    quantity: 75,
+    avgBuyPrice: 1480,
+    currentPrice: 1520,
+    buyDate: new Date(new Date().setMonth(new Date().getMonth() - 3)).toISOString(), // 3 months ago
+  },
+  {
+    id: "5",
+    name: "ICICI Bank",
+    symbol: "ICICIBANK",
+    quantity: 120,
+    avgBuyPrice: 980,
+    currentPrice: 1050,
+    buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 3)).toISOString(), // 3 years ago
+  },
+  {
+    id: "6",
+    name: "Bharti Airtel",
+    symbol: "BHARTIARTL",
+    quantity: 60,
+    avgBuyPrice: 1250,
+    currentPrice: 1180, // Loss making
+    buyDate: new Date(new Date().setMonth(new Date().getMonth() - 8)).toISOString(), // 8 months ago
+  },
+  {
+    id: "7",
+    name: "Hindustan Unilever",
+    symbol: "HINDUNILVR",
+    quantity: 40,
+    avgBuyPrice: 2680,
+    currentPrice: 2520, // Loss making
+    buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1, new Date().getMonth() + 2)).toISOString(), // 10 months ago
+  },
+  {
+    id: "8",
+    name: "State Bank of India",
+    symbol: "SBIN",
+    quantity: 200,
+    avgBuyPrice: 620,
+    currentPrice: 680,
+    buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1, new Date().getMonth() - 5)).toISOString(), // 17 months ago
+  },
+]
+
+// Fetch market and tax analysis data from backend
 async function fetchMarketData(): Promise<PortfolioData> {
-  // Simulate network delay
-  await new Promise((resolve) => setTimeout(resolve, 800))
+  try {
+    // Convert to backend format
+    const assets = DEFAULT_PORTFOLIO.map(h => ({
+      stockName: h.symbol,
+      buyPrice: h.avgBuyPrice,
+      currentPrice: h.currentPrice,
+      buyDate: h.buyDate || new Date().toISOString(),
+      quantity: h.quantity
+    }))
 
-  // Mock data with realistic Indian stock prices
-  const holdings: Holding[] = [
-    {
-      id: "1",
-      name: "Reliance Industries",
-      symbol: "RELIANCE",
-      quantity: 50,
-      avgBuyPrice: 2450,
-      currentPrice: 2580 + Math.random() * 100 - 50,
-    },
-    {
-      id: "2",
-      name: "Tata Consultancy Services",
-      symbol: "TCS",
-      quantity: 25,
-      avgBuyPrice: 3650,
-      currentPrice: 3890 + Math.random() * 150 - 75,
-    },
-    {
-      id: "3",
-      name: "HDFC Bank",
-      symbol: "HDFCBANK",
-      quantity: 100,
-      avgBuyPrice: 1580,
-      currentPrice: 1620 + Math.random() * 80 - 40,
-    },
-    {
-      id: "4",
-      name: "Infosys",
-      symbol: "INFY",
-      quantity: 75,
-      avgBuyPrice: 1480,
-      currentPrice: 1520 + Math.random() * 60 - 30,
-    },
-    {
-      id: "5",
-      name: "ICICI Bank",
-      symbol: "ICICIBANK",
-      quantity: 120,
-      avgBuyPrice: 980,
-      currentPrice: 1050 + Math.random() * 50 - 25,
-    },
-    {
-      id: "6",
-      name: "Bharti Airtel",
-      symbol: "BHARTIARTL",
-      quantity: 60,
-      avgBuyPrice: 1250,
-      currentPrice: 1180 + Math.random() * 40 - 20,
-    },
-    {
-      id: "7",
-      name: "Hindustan Unilever",
-      symbol: "HINDUNILVR",
-      quantity: 40,
-      avgBuyPrice: 2680,
-      currentPrice: 2520 + Math.random() * 100 - 50,
-    },
-    {
-      id: "8",
-      name: "State Bank of India",
-      symbol: "SBIN",
-      quantity: 200,
-      avgBuyPrice: 620,
-      currentPrice: 680 + Math.random() * 30 - 15,
-    },
-  ]
+    const data = await fetchApi("/tax/analyze", {
+      method: "POST",
+      body: JSON.stringify({ assets })
+    })
 
-  return {
-    holdings,
-    realizedPL: {
-      stcg: 45680,
-      ltcg: 82450,
-    },
+    // Map backend response back if needed, or just use the passed DEFAULT_PORTFOLIO
+    // For now, we use our local portfolio UI, but we could merge data.
+    return {
+      holdings: DEFAULT_PORTFOLIO,
+      realizedPL: {
+        stcg: 45680, // Keeping realized PL mock since it's historical
+        ltcg: 82450,
+      },
+    }
+  } catch (err) {
+    console.error("Error fetching tax analysis", err)
+    return {
+      holdings: DEFAULT_PORTFOLIO,
+      realizedPL: { stcg: 0, ltcg: 0 }
+    }
   }
 }
 

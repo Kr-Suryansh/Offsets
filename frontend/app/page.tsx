@@ -21,7 +21,7 @@ export default function Home() {
     setCurrentView("auth")
   }
 
-  const handleViewChange = (view: Exclude<View, "auth">) => {
+  const handleViewChange = (view: View) => {
     setCurrentView(view)
   }
 
@@ -32,7 +32,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar
-        currentView={currentView as Exclude<View, "auth">}
+        currentView={currentView}
         onViewChange={handleViewChange}
         onLogout={handleLogout}
       />
