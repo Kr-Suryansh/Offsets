@@ -13,9 +13,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 
+type AppView = "portfolio" | "tax-saver" | "profile" | "settings"
+
 interface NavbarProps {
-  currentView: "portfolio" | "tax-saver"
-  onViewChange: (view: "portfolio" | "tax-saver") => void
+  currentView: AppView
+  onViewChange: (view: AppView) => void
   onLogout: () => void
 }
 
@@ -82,17 +84,17 @@ export function Navbar({ currentView, onViewChange, onLogout }: NavbarProps) {
               <Button variant="ghost" size="icon" className="rounded-full">
                 <Avatar className="size-8">
                   <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                    JD
+                    YA
                   </AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onViewChange("profile")} id="nav-profile-btn">
                 <User className="mr-2 size-4" />
                 View Profile
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onViewChange("settings")} id="nav-settings-btn">
                 <Settings className="mr-2 size-4" />
                 Settings
               </DropdownMenuItem>
