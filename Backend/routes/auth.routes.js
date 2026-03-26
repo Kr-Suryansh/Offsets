@@ -18,4 +18,9 @@ router.post('/login', authController.login);
 // @access  Private
 router.get('/me', auth, authController.getMe);
 
+// @route   POST /api/auth/change-password
+// @desc    Change user password
+// @access  Private
+router.post('/change-password', auth, authController.changePassword);
+
 module.exports = router;

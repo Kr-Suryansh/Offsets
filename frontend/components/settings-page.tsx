@@ -10,11 +10,48 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { fetchApi } from "@/lib/api"
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme()
   const [strategy, setStrategy] = useState("moderate")
   
+  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false)
+  const [passwordData, setPasswordData] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" })
+  const [isChangingPassword, setIsChangingPassword] = useState(false)
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast.error("New passwords do not match")
+      return
+    }
+    if (passwordData.newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters")
+      return
+    }
+    
+    setIsChangingPassword(true)
+    try {
+      await fetchApi("/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword
+        })
+      })
+      toast.success("Password changed successfully")
+      setIsPasswordDialogOpen(false)
+      setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" })
+    } catch (error: any) {
+      toast.error(error.message || "Failed to change password")
+    } finally {
+      setIsChangingPassword(false)
+    }
+  }
+
   const handleSave = () => {
     toast.success("Settings saved successfully!")
   }
@@ -135,10 +172,61 @@ export function SettingsPage() {
             <CardContent className="space-y-6">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
-                  <Label>Two-Factor Authentication (2FA)</Label>
-                  <p className="text-sm text-muted-foreground">Add an extra layer of security to your account.</p>
+                  <Label>Change Password</Label>
+                  <p className="text-sm text-muted-foreground">Update your account password for better security.</p>
                 </div>
-                <Button variant="outline">Enable 2FA</Button>
+                <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline">Change Password</Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[425px]">
+                    <form onSubmit={handlePasswordChange}>
+                      <DialogHeader>
+                        <DialogTitle>Change Password</DialogTitle>
+                        <DialogDescription>
+                          Enter your current password and your new password below.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                          <Label htmlFor="current">Current Password</Label>
+                          <Input
+                            id="current"
+                            type="password"
+                            value={passwordData.currentPassword}
+                            onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label htmlFor="new">New Password</Label>
+                          <Input
+                            id="new"
+                            type="password"
+                            value={passwordData.newPassword}
+                            onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label htmlFor="confirm">Confirm New Password</Label>
+                          <Input
+                            id="confirm"
+                            type="password"
+                            value={passwordData.confirmPassword}
+                            onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                            required
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button type="submit" disabled={isChangingPassword}>
+                          {isChangingPassword ? "Saving..." : "Save changes"}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
               </div>
               <Separator />
               <div className="flex items-center justify-between">

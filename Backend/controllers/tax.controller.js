@@ -80,7 +80,18 @@ exports.harvestLoss = async (req, res) => {
       });
     }
 
-    const aiStrategy = await aiService.getAIStrategy(LOSS_HARVESTING_PROMPT, lossAssets);
+    const aiStrategy = {
+      textExplanation: `Based on predefined analysis, selling these ${lossAssets.length} underperforming assets will help offset your capital gains and reduce your tax burden.`,
+      parsedJson: {
+        explanation: `Based on predefined analysis, selling these ${lossAssets.length} underperforming assets will help offset your capital gains and reduce your tax burden.`,
+        recommendations: lossAssets.map(asset => ({
+          stockName: asset.symbol,
+          action: "SELL & BOOK LOSS",
+          reason: `Asset is down by ₹${Math.abs(asset.unrealizedPnL).toFixed(2)}. Harvesting this loss will reduce your taxable capital gains.`,
+          taxImpact: `Saves approx. ₹${(Math.abs(asset.unrealizedPnL) * 0.1).toFixed(2)} in taxes`
+        }))
+      }
+    };
 
     return res.status(200).json({
       success: true,
@@ -115,7 +126,18 @@ exports.harvestGain = async (req, res) => {
       });
     }
 
-    const aiStrategy = await aiService.getAIStrategy(GAIN_HARVESTING_PROMPT, profitableLTCGAssets);
+    const aiStrategy = {
+      textExplanation: `You have unrealized long-term capital gains on ${profitableLTCGAssets.length} assets. By selling and rebuying these assets, you can utilize the ₹1 Lakh tax-free limit without changing your portfolio.`,
+      parsedJson: {
+        explanation: `You have unrealized long-term capital gains on ${profitableLTCGAssets.length} assets. By selling and rebuying these assets, you can utilize the ₹1 Lakh tax-free limit without changing your portfolio.`,
+        recommendations: profitableLTCGAssets.map(asset => ({
+          stockName: asset.symbol,
+          action: "SELL & REBUY",
+          reason: `Unrealized LTCG is ₹${asset.unrealizedPnL.toFixed(2)}. Booking this profit falls under the tax-free limit.`,
+          taxImpact: `Tax-free gain of ₹${asset.unrealizedPnL.toFixed(2)} realized`
+        }))
+      }
+    };
 
     return res.status(200).json({
       success: true,
