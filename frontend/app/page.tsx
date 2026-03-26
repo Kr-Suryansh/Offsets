@@ -5,12 +5,14 @@ import { AuthPage } from "@/components/auth-page"
 import { Navbar } from "@/components/navbar"
 import { PortfolioPage } from "@/components/portfolio-page"
 import { TaxSaverPage } from "@/components/tax-saver-page"
+import { TaxGainPage } from "@/components/tax-gain-page"
+import { TaxLossPage } from "@/components/tax-loss-page"
 import { ProfilePage } from "@/components/profile-page"
 import { SettingsPage } from "@/components/settings-page"
 import { fetchApi } from "@/lib/api"
 import { Spinner } from "@/components/ui/spinner"
 
-type View = "auth" | "portfolio" | "tax-saver" | "profile" | "settings"
+type View = "auth" | "portfolio" | "tax-saver" | "tax-gain" | "tax-loss" | "profile" | "settings"
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<View>("auth")
@@ -32,7 +34,6 @@ export default function Home() {
       }
       setIsInitializing(false)
     }
-    
     checkAuth()
   }, [])
 
@@ -45,10 +46,6 @@ export default function Home() {
     localStorage.removeItem("token")
     setUser(null)
     setCurrentView("auth")
-  }
-
-  const handleViewChange = (view: View) => {
-    setCurrentView(view)
   }
 
   if (isInitializing) {
@@ -66,14 +63,16 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar
-        currentView={currentView}
-        onViewChange={handleViewChange}
+        currentView={currentView as any}
+        onViewChange={(view) => setCurrentView(view as View)}
         onLogout={handleLogout}
         user={user}
       />
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {currentView === "portfolio" && <PortfolioPage />}
         {currentView === "tax-saver" && <TaxSaverPage />}
+        {currentView === "tax-gain" && <TaxGainPage />}
+        {currentView === "tax-loss" && <TaxLossPage />}
         {currentView === "profile" && <ProfilePage user={user} />}
         {currentView === "settings" && <SettingsPage />}
       </main>

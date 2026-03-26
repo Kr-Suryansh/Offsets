@@ -65,19 +65,7 @@ The application handles the analysis and strategy generation for stock portfolio
   }
   ```
 
-## 4. Gifting Analysis
-- **Endpoint**: `/api/tax/gifting-analysis`
-- **Method**: `POST`
-- **Description**: Evaluates family gifting efficiency to take advantage of lower tax brackets.
-- **Request JSON Body**:
-  ```json
-  {
-    "assets": [...],
-    "family": {
-      "spouseBracket": "10%",
-      "childBracket": "0%"
-    }
-  }
+
   ```
 
 ## 5. Strategy Optimize (Engine)

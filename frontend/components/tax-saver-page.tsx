@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { TrendingUp, TrendingDown, RefreshCw, Sparkles, AlertTriangle, IndianRupee, Clock } from "lucide-react"
+import { TrendingUp, TrendingDown, RefreshCw, Sparkles, ChevronDown, ChevronUp, Clock, Code2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -13,29 +13,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
+import { fetchApi } from "@/lib/api"
 
-interface GainHarvestingRecommendation {
+interface Recommendation {
   stockName: string
-  action: string
   reason: string
-  taxImpact: string
-}
-
-interface LossHarvestingRecommendation {
-  stockName: string
-  action: string
-  reason: string
-  taxImpact: string
+  action?: string
+  taxImpact?: string
 }
 
 interface TaxRecommendations {
-  gainHarvesting: GainHarvestingRecommendation[]
-  lossHarvesting: LossHarvestingRecommendation[]
+  gainHarvesting: Recommendation[]
+  lossHarvesting: Recommendation[]
   gainExplanation: string
   lossExplanation: string
+  rawGain: any
+  rawLoss: any
   summary: {
     totalPotentialTaxSaved: number
     ltcgExemptionUsed: number
@@ -44,9 +39,6 @@ interface TaxRecommendations {
   }
 }
 
-import { fetchApi } from "@/lib/api"
-
-// We use the same DEFAULT_PORTFOLIO constructed similarly to portfolio-page
 const DEFAULT_PORTFOLIO = [
   { id: "1", name: "Reliance Industries", symbol: "RELIANCE", quantity: 50, avgBuyPrice: 2450, currentPrice: 2580, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString() },
   { id: "2", name: "Tata Consultancy Services", symbol: "TCS", quantity: 25, avgBuyPrice: 3650, currentPrice: 3890, buyDate: new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString() },
@@ -58,8 +50,6 @@ const DEFAULT_PORTFOLIO = [
   { id: "8", name: "State Bank of India", symbol: "SBIN", quantity: 200, avgBuyPrice: 620, currentPrice: 680, buyDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1, new Date().getMonth() - 5)).toISOString() },
 ]
 
-
-// Simulates an API call to fetch tax recommendations by calling real backend
 async function fetchTaxRecommendations(): Promise<TaxRecommendations> {
   const assets = DEFAULT_PORTFOLIO.map(h => ({
     stockName: h.symbol,
@@ -89,18 +79,16 @@ async function fetchTaxRecommendations(): Promise<TaxRecommendations> {
     return {
       gainHarvesting: gainAI.recommendations.map((r: any) => ({
         stockName: r.stockName || "Unknown",
-        action: r.action || "HOLD",
         reason: r.reason || r.explanation || "",
-        taxImpact: r.taxImpact || r.estimatedBenefit || ""
       })),
       lossHarvesting: lossAI.recommendations.map((r: any) => ({
         stockName: r.stockName || "Unknown",
-        action: r.action || "HOLD",
         reason: r.reason || r.explanation || "",
-        taxImpact: r.taxImpact || r.estimatedBenefit || ""
       })),
       gainExplanation: gainAI.explanation,
       lossExplanation: lossAI.explanation,
+      rawGain: gainRes,
+      rawLoss: lossRes,
       summary: {
         totalPotentialTaxSaved: 35200,
         ltcgExemptionUsed: 82000,
@@ -113,8 +101,10 @@ async function fetchTaxRecommendations(): Promise<TaxRecommendations> {
     return {
       gainHarvesting: [],
       lossHarvesting: [],
-      gainExplanation: "Failed to load",
-      lossExplanation: "Failed to load",
+      gainExplanation: "Failed to load recommendations.",
+      lossExplanation: "Failed to load recommendations.",
+      rawGain: null,
+      rawLoss: null,
       summary: { totalPotentialTaxSaved: 0, ltcgExemptionUsed: 0, ltcgExemptionLimit: 100000, totalLossToBook: 0 }
     }
   }
@@ -126,6 +116,31 @@ function formatCurrency(amount: number): string {
     currency: "INR",
     maximumFractionDigits: 0,
   }).format(amount)
+}
+
+function JsonBlock({ data, label }: { data: any; label: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Card className="border-dashed">
+      <CardHeader className="pb-2 cursor-pointer" onClick={() => setOpen(v => !v)}>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Code2 className="size-4 text-muted-foreground" />
+            Raw JSON — {label}
+          </CardTitle>
+          {open ? <ChevronUp className="size-4 text-muted-foreground" /> : <ChevronDown className="size-4 text-muted-foreground" />}
+        </div>
+        <CardDescription>Inspect the full API response from the AI strategy engine.</CardDescription>
+      </CardHeader>
+      {open && (
+        <CardContent>
+          <pre className="text-xs bg-muted/40 rounded-lg p-4 overflow-x-auto max-h-64 leading-relaxed">
+            {JSON.stringify(data, null, 2)}
+          </pre>
+        </CardContent>
+      )}
+    </Card>
+  )
 }
 
 export function TaxSaverPage() {
@@ -152,10 +167,6 @@ export function TaxSaverPage() {
     loadData()
   }, [loadData])
 
-  const handleRefresh = () => {
-    loadData(true)
-  }
-
   if (loading || !data) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -164,7 +175,7 @@ export function TaxSaverPage() {
     )
   }
 
-  const exemptionPercentUsed = (data.summary.ltcgExemptionUsed / data.summary.ltcgExemptionLimit) * 100
+  const exemptionPct = Math.round((data.summary.ltcgExemptionUsed / data.summary.ltcgExemptionLimit) * 100)
 
   return (
     <div className="flex flex-col gap-6">
@@ -172,32 +183,52 @@ export function TaxSaverPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Tax Saver Suggestions</h1>
-          <p className="text-muted-foreground">
-            Smart recommendations to optimize your tax liability
-          </p>
+          <p className="text-muted-foreground">Smart recommendations to optimize your tax liability</p>
         </div>
         <div className="flex items-center gap-3">
           {lastUpdated && (
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <Clock className="size-4" />
-              <span>Last updated: {lastUpdated.toLocaleTimeString()}</span>
+              <span>Updated: {lastUpdated.toLocaleTimeString()}</span>
             </div>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-          >
+          <Button variant="outline" size="sm" onClick={() => loadData(true)} disabled={isRefreshing}>
             <RefreshCw className={cn("size-4 mr-2", isRefreshing && "animate-spin")} />
             Refresh
           </Button>
         </div>
       </div>
 
+      {/* Summary Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground">Tax Saved (Est.)</p>
+            <p className="text-xl font-bold text-green-500 mt-1">{formatCurrency(data.summary.totalPotentialTaxSaved)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground">LTCG Used</p>
+            <p className="text-xl font-bold mt-1">{formatCurrency(data.summary.ltcgExemptionUsed)}</p>
+            <p className="text-xs text-muted-foreground">{exemptionPct}% of ₹1L limit</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground">Exemption Remaining</p>
+            <p className="text-xl font-bold mt-1">{formatCurrency(data.summary.ltcgExemptionLimit - data.summary.ltcgExemptionUsed)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground">Losses to Book</p>
+            <p className="text-xl font-bold text-red-500 mt-1">{formatCurrency(data.summary.totalLossToBook)}</p>
+          </CardContent>
+        </Card>
+      </div>
 
-
-      {/* Tabs for Gain/Loss Harvesting */}
+      {/* Tabs */}
       <Tabs defaultValue="gain" className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="gain" className="gap-2">
@@ -210,16 +241,16 @@ export function TaxSaverPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="gain">
+        {/* ── GAIN TAB ── */}
+        <TabsContent value="gain" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="size-5 text-profit" />
+                <TrendingUp className="size-5 text-green-500" />
                 Gain Harvesting Recommendations
               </CardTitle>
               <CardDescription>
-                Realize gains up to ₹1 Lakh tax-free under LTCG exemption. Sell these
-                stocks to utilize your exemption limit before the financial year ends.
+                Realize gains up to ₹1 Lakh tax-free under LTCG exemption. Sell these stocks to utilize your exemption limit before the financial year ends.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -227,55 +258,61 @@ export function TaxSaverPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Stock</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                    <TableHead className="text-right">Reason</TableHead>
-                    <TableHead className="text-right">Tax Impact</TableHead>
+                    <TableHead>Why This Stock?</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {data.gainHarvesting.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={2} className="text-center text-muted-foreground py-8">
                         No gain harvesting opportunities found.
                       </TableCell>
                     </TableRow>
                   ) : data.gainHarvesting.map((rec, i) => (
                     <TableRow key={i}>
                       <TableCell>
-                        <div className="font-medium">{rec.stockName}</div>
+                        <div className="font-semibold">{rec.stockName}</div>
+                        <div className="text-xs text-green-500 font-medium">Gain Harvest</div>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Badge variant="secondary">{rec.action}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
+                      <TableCell className="text-muted-foreground text-sm max-w-sm">
                         {rec.reason}
-                      </TableCell>
-                      <TableCell className="text-right font-mono font-medium text-profit">
-                        {rec.taxImpact}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-              {data.gainExplanation && (
-                <div className="mt-4 p-4 bg-muted/30 rounded-lg text-sm">
-                  <strong>AI Strategy Insight:</strong> {data.gainExplanation}
-                </div>
-              )}
             </CardContent>
           </Card>
+
+          {/* AI Explanation */}
+          {data.gainExplanation && (
+            <Card className="border-green-500/20 bg-green-500/5">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Sparkles className="size-4 text-green-500" />
+                  AI Strategy Explanation
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm leading-relaxed text-muted-foreground">{data.gainExplanation}</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Raw JSON */}
+          <JsonBlock data={data.rawGain} label="Gain Harvesting" />
         </TabsContent>
 
-        <TabsContent value="loss">
+        {/* ── LOSS TAB ── */}
+        <TabsContent value="loss" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <TrendingDown className="size-5 text-loss" />
+                <TrendingDown className="size-5 text-red-500" />
                 Loss Harvesting Recommendations
               </CardTitle>
               <CardDescription>
-                Book losses on underperforming stocks to offset your realized capital
-                gains and reduce your overall tax liability for the financial year.
+                Book losses on underperforming stocks to offset your realized capital gains and reduce your overall tax liability.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -283,43 +320,49 @@ export function TaxSaverPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Stock</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                    <TableHead className="text-right">Reason</TableHead>
-                    <TableHead className="text-right">Tax Impact</TableHead>
+                    <TableHead>Why This Stock?</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {data.lossHarvesting.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={2} className="text-center text-muted-foreground py-8">
                         No loss harvesting opportunities found.
                       </TableCell>
                     </TableRow>
                   ) : data.lossHarvesting.map((rec, i) => (
                     <TableRow key={i}>
                       <TableCell>
-                        <div className="font-medium">{rec.stockName}</div>
+                        <div className="font-semibold">{rec.stockName}</div>
+                        <div className="text-xs text-red-500 font-medium">Loss Harvest</div>
                       </TableCell>
-                      <TableCell className="text-right font-mono">
-                        <Badge variant="secondary">{rec.action}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
+                      <TableCell className="text-muted-foreground text-sm max-w-sm">
                         {rec.reason}
-                      </TableCell>
-                      <TableCell className="text-right font-mono font-medium text-loss">
-                        {rec.taxImpact}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-              {data.lossExplanation && (
-                <div className="mt-4 p-4 bg-muted/30 rounded-lg text-sm">
-                  <strong>AI Strategy Insight:</strong> {data.lossExplanation}
-                </div>
-              )}
             </CardContent>
           </Card>
+
+          {/* AI Explanation */}
+          {data.lossExplanation && (
+            <Card className="border-red-500/20 bg-red-500/5">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Sparkles className="size-4 text-red-500" />
+                  AI Strategy Explanation
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm leading-relaxed text-muted-foreground">{data.lossExplanation}</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Raw JSON */}
+          <JsonBlock data={data.rawLoss} label="Loss Harvesting" />
         </TabsContent>
       </Tabs>
 
@@ -327,10 +370,7 @@ export function TaxSaverPage() {
       <Card className="border-muted bg-muted/30">
         <CardContent className="pt-6">
           <p className="text-sm text-muted-foreground">
-            <strong>Disclaimer:</strong> These recommendations are based on your
-            current portfolio data and general tax rules. Please consult a certified
-            tax advisor before making any investment decisions. Tax laws may vary
-            based on your specific situation and are subject to change.
+            <strong>Disclaimer:</strong> These recommendations are based on your current portfolio data and general tax rules. Please consult a certified tax advisor before making any investment decisions. Tax laws may vary based on your specific situation and are subject to change.
           </p>
         </CardContent>
       </Card>

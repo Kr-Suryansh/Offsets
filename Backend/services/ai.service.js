@@ -12,13 +12,14 @@ const { OpenAI } = require('openai');
  */
 exports.getAIStrategy = async (systemPrompt, userDataJSON) => {
   try {
-    // Initialized here so process.env.OPENAI_API_KEY is read when called
+    const isGroq = (process.env.OPENAI_API_KEY || '').startsWith('gsk_');
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY || 'your-api-key-here',
+      ...(isGroq ? { baseURL: 'https://api.groq.com/openai/v1' } : {})
     });
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4', 
+      model: isGroq ? 'llama-3.3-70b-versatile' : 'gpt-4', 
       messages: [
         {
           role: 'system',
@@ -65,12 +66,14 @@ exports.getAIStrategy = async (systemPrompt, userDataJSON) => {
  */
 exports.getAIText = async (systemPrompt, userDataJSON) => {
   try {
+    const isGroq = (process.env.OPENAI_API_KEY || '').startsWith('gsk_');
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY || 'your-api-key-here',
+      ...(isGroq ? { baseURL: 'https://api.groq.com/openai/v1' } : {})
     });
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4', 
+      model: isGroq ? 'llama-3.3-70b-versatile' : 'gpt-4', 
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: JSON.stringify(userDataJSON) }

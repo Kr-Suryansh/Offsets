@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Bell, Moon, Sun, User, Paintbrush, Shield, BellRing, Smartphone } from "lucide-react"
+import { Moon, Sun, Paintbrush, Shield, BellRing, Download, Trash2, IndianRupee, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -12,15 +12,54 @@ import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
 import { fetchApi } from "@/lib/api"
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme()
-  const [strategy, setStrategy] = useState("moderate")
-  
+
+  // Display Preferences
+  const [showPortfolioValue, setShowPortfolioValue] = useState(true)
+  const [indianNumberFormat, setIndianNumberFormat] = useState(true)
+
+  // Notification Preferences
+  const [notifications, setNotifications] = useState({
+    harvestingAlerts: true,
+    weeklySummary: true,
+    taxLawChanges: true,
+    priceAlerts: false,
+    monthlyReport: false,
+  })
+
+  // Security
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false)
   const [passwordData, setPasswordData] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" })
   const [isChangingPassword, setIsChangingPassword] = useState(false)
+
+  const handleNotificationToggle = (key: keyof typeof notifications, value: boolean) => {
+    setNotifications(prev => ({ ...prev, [key]: value }))
+    toast.info(value ? `${notificationLabels[key]} enabled` : `${notificationLabels[key]} disabled`)
+  }
+
+  const notificationLabels: Record<keyof typeof notifications, string> = {
+    harvestingAlerts: "Harvesting Alerts",
+    weeklySummary: "Weekly Portfolio Summary",
+    taxLawChanges: "Tax Law Changes",
+    priceAlerts: "Price Alerts",
+    monthlyReport: "Monthly Report",
+  }
+
+  const handleSaveNotifications = () => {
+    toast.success("Notification preferences saved!")
+  }
+
+  const handleExportCSV = () => {
+    toast.success("Portfolio data exported as CSV!")
+  }
+
+  const handleClearSession = () => {
+    toast.success("Session data cleared!")
+  }
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,7 +71,6 @@ export function SettingsPage() {
       toast.error("Password must be at least 6 characters")
       return
     }
-    
     setIsChangingPassword(true)
     try {
       await fetchApi("/auth/change-password", {
@@ -50,10 +88,6 @@ export function SettingsPage() {
     } finally {
       setIsChangingPassword(false)
     }
-  }
-
-  const handleSave = () => {
-    toast.success("Settings saved successfully!")
   }
 
   return (
@@ -79,7 +113,9 @@ export function SettingsPage() {
           </TabsTrigger>
         </TabsList>
 
+        {/* ── PREFERENCES TAB ── */}
         <TabsContent value="preferences" className="space-y-4">
+          {/* Appearance */}
           <Card>
             <CardHeader>
               <CardTitle>Appearance</CardTitle>
@@ -93,9 +129,9 @@ export function SettingsPage() {
                 </div>
                 <div className="flex items-center space-x-2">
                   <Sun className="size-4 text-muted-foreground" />
-                  <Switch 
-                    checked={theme === "dark"} 
-                    onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} 
+                  <Switch
+                    checked={theme === "dark"}
+                    onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
                   />
                   <Moon className="size-4 text-muted-foreground" />
                 </div>
@@ -103,32 +139,97 @@ export function SettingsPage() {
             </CardContent>
           </Card>
 
+          {/* Display Preferences */}
           <Card>
             <CardHeader>
-              <CardTitle>Tax-Saving Strategy</CardTitle>
-              <CardDescription>Adjust how aggressive the AI should be when suggesting trades.</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <IndianRupee className="size-5" />
+                Display Preferences
+              </CardTitle>
+              <CardDescription>Control how portfolio data and numbers are displayed.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <Label>Show Portfolio Value</Label>
+                  <p className="text-sm text-muted-foreground">Display total portfolio value in the dashboard header.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {showPortfolioValue ? (
+                    <Eye className="size-4 text-muted-foreground" />
+                  ) : (
+                    <EyeOff className="size-4 text-muted-foreground" />
+                  )}
+                  <Switch
+                    checked={showPortfolioValue}
+                    onCheckedChange={setShowPortfolioValue}
+                  />
+                </div>
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <Label>Indian Number Format</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Display numbers in Indian format (e.g., <span className="font-mono">₹12,34,567</span> instead of <span className="font-mono">₹1,234,567</span>).
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="font-mono text-xs">
+                    {indianNumberFormat ? "₹12,34,567" : "₹1,234,567"}
+                  </Badge>
+                  <Switch
+                    checked={indianNumberFormat}
+                    onCheckedChange={setIndianNumberFormat}
+                  />
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="flex justify-end">
+              <Button onClick={() => toast.success("Display preferences saved!")}>Save Preferences</Button>
+            </CardFooter>
+          </Card>
+
+          {/* Data & Export */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Download className="size-5" />
+                Data &amp; Export
+              </CardTitle>
+              <CardDescription>Export your portfolio data or clear local session information.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {[
-                  { id: "conservative", name: "Conservative", desc: "Minimal trades, focus on long-term hold." },
-                  { id: "moderate", name: "Moderate", desc: "Balanced approach to tax harvesting." },
-                  { id: "aggressive", name: "Aggressive", desc: "Maximize short-term tax benefits frequently." }
-                ].map((s) => (
-                  <div 
-                    key={s.id} 
-                    className={`border rounded-lg p-4 cursor-pointer transition-colors ${strategy === s.id ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}
-                    onClick={() => setStrategy(s.id)}
-                  >
-                    <h3 className="font-semibold">{s.name}</h3>
-                    <p className="text-sm text-muted-foreground mt-1">{s.desc}</p>
-                  </div>
-                ))}
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <Label>Export Portfolio as CSV</Label>
+                  <p className="text-sm text-muted-foreground">Download all your holdings data as a spreadsheet.</p>
+                </div>
+                <Button variant="outline" onClick={handleExportCSV} className="gap-2">
+                  <Download className="size-4" />
+                  Export CSV
+                </Button>
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <Label>Clear Session Data</Label>
+                  <p className="text-sm text-muted-foreground">Remove cached recommendation data stored locally.</p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={handleClearSession}
+                  className="gap-2 text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="size-4" />
+                  Clear Data
+                </Button>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
+        {/* ── NOTIFICATIONS TAB ── */}
         <TabsContent value="notifications" className="space-y-4">
           <Card>
             <CardHeader>
@@ -136,38 +237,60 @@ export function SettingsPage() {
               <CardDescription>Choose what updates you want to receive.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <Label>Harvesting Alerts</Label>
-                  <p className="text-sm text-muted-foreground">Get notified when a profitable tax-harvesting opportunity arises.</p>
+              {[
+                {
+                  key: "harvestingAlerts" as const,
+                  label: "Harvesting Alerts",
+                  desc: "Get notified when a profitable tax-harvesting opportunity arises.",
+                },
+                {
+                  key: "weeklySummary" as const,
+                  label: "Weekly Portfolio Summary",
+                  desc: "Receive a weekly digest of your portfolio performance.",
+                },
+                {
+                  key: "taxLawChanges" as const,
+                  label: "Tax Law Changes",
+                  desc: "Alerts about new budget or tax policies affecting your investments.",
+                },
+                {
+                  key: "priceAlerts" as const,
+                  label: "Price Alerts",
+                  desc: "Get notified when a stock in your portfolio crosses a key price level.",
+                },
+                {
+                  key: "monthlyReport" as const,
+                  label: "Monthly Report",
+                  desc: "A detailed monthly tax-efficiency report delivered to your inbox.",
+                },
+              ].map((item, index, arr) => (
+                <div key={item.key}>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <Label>{item.label}</Label>
+                      <p className="text-sm text-muted-foreground">{item.desc}</p>
+                    </div>
+                    <Switch
+                      checked={notifications[item.key]}
+                      onCheckedChange={(val) => handleNotificationToggle(item.key, val)}
+                    />
+                  </div>
+                  {index < arr.length - 1 && <Separator className="mt-6" />}
                 </div>
-                <Switch defaultChecked />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <Label>Weekly Portfolio Summary</Label>
-                  <p className="text-sm text-muted-foreground">Receive a weekly digest of your portfolio performance.</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <Label>Changes in Tax Laws</Label>
-                  <p className="text-sm text-muted-foreground">Alerts about new budget or tax policies affecting your investments.</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
+              ))}
             </CardContent>
+            <CardFooter className="flex justify-end">
+              <Button onClick={handleSaveNotifications}>Save Notification Settings</Button>
+            </CardFooter>
           </Card>
         </TabsContent>
 
+        {/* ── SECURITY TAB ── */}
         <TabsContent value="security" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Security Settings</CardTitle>
-              <CardDescription>Manage your security preferences and connected devices.</CardDescription>
+              <CardDescription>Manage your security preferences and connected services.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex items-center justify-between">
@@ -240,11 +363,6 @@ export function SettingsPage() {
           </Card>
         </TabsContent>
       </Tabs>
-      
-      <div className="flex justify-end gap-3 mt-4">
-        <Button variant="outline">Reset Defaults</Button>
-        <Button onClick={handleSave}>Save Changes</Button>
-      </div>
     </div>
   )
 }

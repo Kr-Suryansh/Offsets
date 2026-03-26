@@ -2,27 +2,84 @@
  * tax.controller.js
  * Core controller logic mapping requests to services.
  */
-// const Portfolio = require('../models/Portfolio');
 const taxCalculatorService = require('../services/taxCalculator.service');
 const aiService = require('../services/ai.service');
 
-// System prompts defined cleanly
 const LOSS_HARVESTING_PROMPT = `
-You are an expert tax advisor. 
-You are provided with a portfolio of assets.
-Identify stocks with negative unrealizedPnL. Suggest selling to lower the current year's tax liability (Tax-Loss Harvesting).
-Return exactly TWO parts in JSON format: 
-1. "explanation": a string explanation of the strategy.
-2. "recommendations": a JSON array of specific actionable recommendations (each containing stockName, action, and estimatedBenefit).
+You are a Senior Tax Strategist and Portfolio Optimizer AI. 
+
+CONTEXT: 
+The user is looking to execute a "Tax-Loss Harvesting" strategy. Your backend system has already calculated all holding periods, profits, and losses. The user wants to offset their taxable capital gains by selling underperforming assets.
+
+INPUT DATA: 
+You will receive a JSON array of the user's current loss-making investments, including holding periods (STCG/LTCG) and exact loss amounts.
+
+YOUR DIRECTIVES:
+1. DO NOT perform any mathematical calculations. Rely entirely on the numbers provided in the input.
+2. Analyze the provided portfolio and recommend specific assets to SELL to harvest losses.
+3. Prioritize Short-Term losses to offset Short-Term gains first, if applicable.
+4. Briefly mention the "Wash Sale Rule" (or regional equivalent) as a standard risk warning in your explanation.
+
+OUTPUT FORMAT:
+You must return exactly TWO sections. Do not include any extra conversational filler.
+
+📄 Explanation:
+[Write 2-3 concise paragraphs of human-readable financial reasoning explaining why harvesting these specific losses is beneficial and how it reduces immediate tax liability.]
+
+📊 Structured Data:
+\`\`\`json
+[
+  {
+    "stockName": "[Name]",
+    "action": "SELL / HOLD",
+    "reason": "[1-sentence strategic reason, e.g., 'Harvesting this -$500 loss will offset your recent STCG']",
+    "taxImpact": "[Expected tax benefit, e.g., 'Reduces overall taxable gains']"
+  }
+]
+\`\`\`
 `;
 
 const GAIN_HARVESTING_PROMPT = `
-You are an expert tax advisor. 
-You are provided with a portfolio of assets.
-Identify LTCG stocks with profit. Suggest selling and immediately rebuying to utilize the 1.25L tax-free limit (Cost-Basis Reset).
-Return exactly TWO parts in JSON format: 
-1. "explanation": a string explanation of the strategy.
-2. "recommendations": a JSON array of specific actionable recommendations (each containing stockName, action, and estimatedBenefit).
+### 2. Tax-Gain Harvesting System Prompt
+
+**When to trigger:** Backend detects highly profitable assets and the user wants to optimize profit booking against tax brackets.
+
+**Prompt Template:**
+\`\`\`text
+You are an Elite Wealth Management AI specializing in Capital Gains Optimization.
+
+CONTEXT:
+The user wants to execute a "Tax-Gain Harvesting" strategy. Your backend system has already calculated holding periods and classified assets into Short-Term Capital Gains (STCG) and Long-Term Capital Gains (LTCG). The goal is to maximize retained profit by minimizing the tax rate applied to these gains.
+
+INPUT DATA:
+You will receive a JSON array of the user's profitable investments, including their STCG/LTCG classification, holding days, and unrealized profit. 
+
+YOUR DIRECTIVES:
+1. DO NOT perform any mathematical calculations. Rely entirely on the provided input data.
+2. Apply the following decision rules:
+   - WAIT: If an asset is near the LTCG threshold (e.g., 340+ days), advise waiting to unlock the lower long-term tax rate.
+   - SELL: If an asset has already reached LTCG status and locking in profits aligns with lower tax bracket advantages (basis resetting).
+   - HOLD: If an asset is strictly STCG with high tax implications, unless selling is strategically necessary.
+3. Explain the logic of timing the market strictly from a tax-efficiency standpoint.
+
+OUTPUT FORMAT:
+You must return exactly TWO sections. Do not include any extra conversational filler.
+
+📄 Explanation:
+[Write 2-3 concise paragraphs explaining the strategy, specifically focusing on the tax rate differences between STCG and LTCG, and why waiting or selling now makes financial sense.]
+
+📊 Structured Data:
+\`\`\`json
+[
+  {
+    "stockName": "[Name]",
+    "action": "SELL / HOLD / WAIT",
+    "reason": "[1-sentence strategic reason, e.g., 'Hold for 15 more days to qualify for the lower LTCG tax rate']",
+    "taxImpact": "[Expected tax benefit, e.g., 'Drops tax liability from 30% to 10%']"
+  }
+]
+\`\`\`
+(Ensure the JSON block is perfectly formatted and valid).
 `;
 
 const GENERAL_ANALYSIS_PROMPT = `
@@ -33,19 +90,24 @@ Return exactly TWO parts in JSON format:
 2. "recommendations": a JSON array of general recommendations to improve tax efficiency.
 `;
 
-/**
- * Analyzes the portfolio and optionally asks AI for a summary
- */
 exports.analyzePortfolio = async (req, res) => {
   try {
     const rawAssets = req.body.assets;
-
     if (!rawAssets || rawAssets.length === 0) {
       return res.status(400).json({ message: "No assets provided for analysis" });
     }
 
     const processedAssets = taxCalculatorService.calculateTaxParameters(rawAssets);
-    const aiStrategy = await aiService.getAIStrategy(GENERAL_ANALYSIS_PROMPT, processedAssets);
+    
+    // We remove some unnecessary metadata to save token costs
+    const cleanAssets = processedAssets.map(asset => ({
+      symbol: asset.symbol,
+      unrealizedPnL: asset.unrealizedPnL,
+      classification: asset.classification,
+      holdingDays: asset.holdingDays
+    }));
+
+    const aiStrategy = await aiService.getAIStrategy(GENERAL_ANALYSIS_PROMPT, cleanAssets);
 
     return res.status(200).json({
       success: true,
@@ -58,17 +120,12 @@ exports.analyzePortfolio = async (req, res) => {
   }
 };
 
-/**
- * Recommends Tax-Loss Harvesting Strategy
- */
 exports.harvestLoss = async (req, res) => {
   try {
     const rawAssets = req.body.assets; 
     if (!rawAssets) return res.status(400).json({ message: "No assets provided" });
 
     const processedAssets = taxCalculatorService.calculateTaxParameters(rawAssets);
-    
-    // Filter only loss-making assets
     const lossAssets = processedAssets.filter(asset => asset.unrealizedPnL < 0);
     
     if (lossAssets.length === 0) {
@@ -80,18 +137,14 @@ exports.harvestLoss = async (req, res) => {
       });
     }
 
-    const aiStrategy = {
-      textExplanation: `Based on predefined analysis, selling these ${lossAssets.length} underperforming assets will help offset your capital gains and reduce your tax burden.`,
-      parsedJson: {
-        explanation: `Based on predefined analysis, selling these ${lossAssets.length} underperforming assets will help offset your capital gains and reduce your tax burden.`,
-        recommendations: lossAssets.map(asset => ({
-          stockName: asset.symbol,
-          action: "SELL & BOOK LOSS",
-          reason: `Asset is down by ₹${Math.abs(asset.unrealizedPnL).toFixed(2)}. Harvesting this loss will reduce your taxable capital gains.`,
-          taxImpact: `Saves approx. ₹${(Math.abs(asset.unrealizedPnL) * 0.1).toFixed(2)} in taxes`
-        }))
-      }
-    };
+    const cleanAssets = lossAssets.map(asset => ({
+      symbol: asset.symbol,
+      unrealizedPnL: asset.unrealizedPnL,
+      classification: asset.classification,
+      holdingDays: asset.holdingDays
+    }));
+
+    const aiStrategy = await aiService.getAIStrategy(LOSS_HARVESTING_PROMPT, cleanAssets);
 
     return res.status(200).json({
       success: true,
@@ -104,17 +157,12 @@ exports.harvestLoss = async (req, res) => {
   }
 };
 
-/**
- * Recommends Tax-Gain Harvesting Strategy
- */
 exports.harvestGain = async (req, res) => {
   try {
     const rawAssets = req.body.assets;
     if (!rawAssets) return res.status(400).json({ message: "No assets provided" });
 
     const processedAssets = taxCalculatorService.calculateTaxParameters(rawAssets);
-    
-    // Filter LTCG assets with profit
     const profitableLTCGAssets = processedAssets.filter(asset => asset.classification === 'LTCG' && asset.unrealizedPnL > 0);
     
     if (profitableLTCGAssets.length === 0) {
@@ -126,18 +174,14 @@ exports.harvestGain = async (req, res) => {
       });
     }
 
-    const aiStrategy = {
-      textExplanation: `You have unrealized long-term capital gains on ${profitableLTCGAssets.length} assets. By selling and rebuying these assets, you can utilize the ₹1 Lakh tax-free limit without changing your portfolio.`,
-      parsedJson: {
-        explanation: `You have unrealized long-term capital gains on ${profitableLTCGAssets.length} assets. By selling and rebuying these assets, you can utilize the ₹1 Lakh tax-free limit without changing your portfolio.`,
-        recommendations: profitableLTCGAssets.map(asset => ({
-          stockName: asset.symbol,
-          action: "SELL & REBUY",
-          reason: `Unrealized LTCG is ₹${asset.unrealizedPnL.toFixed(2)}. Booking this profit falls under the tax-free limit.`,
-          taxImpact: `Tax-free gain of ₹${asset.unrealizedPnL.toFixed(2)} realized`
-        }))
-      }
-    };
+    const cleanAssets = profitableLTCGAssets.map(asset => ({
+      symbol: asset.symbol,
+      unrealizedPnL: asset.unrealizedPnL,
+      classification: asset.classification,
+      holdingDays: asset.holdingDays
+    }));
+
+    const aiStrategy = await aiService.getAIStrategy(GAIN_HARVESTING_PROMPT, cleanAssets);
 
     return res.status(200).json({
       success: true,
