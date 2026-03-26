@@ -17,9 +17,10 @@ interface NavbarProps {
   currentView: "portfolio" | "tax-saver" | "profile" | "settings"
   onViewChange: (view: "portfolio" | "tax-saver" | "profile" | "settings") => void
   onLogout: () => void
+  user?: any
 }
 
-export function Navbar({ currentView, onViewChange, onLogout }: NavbarProps) {
+export function Navbar({ currentView, onViewChange, onLogout, user }: NavbarProps) {
   const { theme, setTheme } = useTheme()
 
   return (
@@ -81,8 +82,8 @@ export function Navbar({ currentView, onViewChange, onLogout }: NavbarProps) {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="rounded-full">
                 <Avatar className="size-8">
-                  <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                    JD
+                  <AvatarFallback className="bg-primary text-primary-foreground text-xs uppercase">
+                    {user?.name ? user.name.substring(0, 2) : "JD"}
                   </AvatarFallback>
                 </Avatar>
               </Button>

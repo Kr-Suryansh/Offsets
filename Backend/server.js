@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
 const taxRoutes = require('./routes/tax.routes');
+const authRoutes = require('./routes/auth.routes');
 require('dotenv').config();
 
 const app = express();
@@ -15,6 +16,7 @@ app.use(express.json({ extended: false }));
 
 // Define Routes
 app.use('/api/tax', taxRoutes);
+app.use('/api/auth', authRoutes);
 
 // Health check and API Overview route
 app.get('/', (req, res) => {

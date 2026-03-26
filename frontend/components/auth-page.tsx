@@ -9,8 +9,11 @@ import { Label } from "@/components/ui/label"
 import { useTheme } from "next-themes"
 
 interface AuthPageProps {
-  onLogin: () => void
+  onLogin: (user: any) => void
 }
+
+import { fetchApi } from "@/lib/api"
+import { Spinner } from "@/components/ui/spinner"
 
 export function AuthPage({ onLogin }: AuthPageProps) {
   const [isSignUp, setIsSignUp] = useState(false)
@@ -20,9 +23,10 @@ export function AuthPage({ onLogin }: AuthPageProps) {
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
   const { theme, setTheme } = useTheme()
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
 
@@ -36,8 +40,30 @@ export function AuthPage({ onLogin }: AuthPageProps) {
       return
     }
 
-    // Simulate authentication
-    onLogin()
+    setIsLoading(true)
+
+    try {
+      const endpoint = isSignUp ? "/auth/register" : "/auth/login"
+      const body = isSignUp 
+        ? { email, password, name: email.split('@')[0] } 
+        : { email, password }
+        
+      const response = await fetchApi(endpoint, {
+        method: "POST",
+        body: JSON.stringify(body)
+      })
+
+      if (response.token) {
+        localStorage.setItem("token", response.token)
+        onLogin(response.user)
+      } else {
+        setError("Invalid response from server")
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to authenticate")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -136,7 +162,8 @@ export function AuthPage({ onLogin }: AuthPageProps) {
               <p className="text-sm text-loss">{error}</p>
             )}
 
-            <Button type="submit" className="w-full mt-2">
+            <Button type="submit" className="w-full mt-2" disabled={isLoading}>
+              {isLoading && <Spinner className="mr-2 size-4" />}
               {isSignUp ? "Create account" : "Sign in"}
             </Button>
 

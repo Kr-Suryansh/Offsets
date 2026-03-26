@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-export function ProfilePage() {
+export function ProfilePage({ user }: { user?: any }) {
   return (
     <div className="flex flex-col gap-6 max-w-5xl mx-auto w-full">
       {/* Header Profile Section */}
@@ -21,11 +21,13 @@ export function ProfilePage() {
         <div className="h-32 bg-gradient-to-r from-blue-600 to-indigo-800" />
         <CardContent className="relative pt-0 pb-6 px-6 flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6">
           <Avatar className="size-24 border-4 border-background -mt-12 bg-muted text-muted-foreground shadow-sm">
-            <AvatarFallback className="text-2xl font-semibold bg-primary text-primary-foreground">JD</AvatarFallback>
+            <AvatarFallback className="text-2xl font-semibold bg-primary text-primary-foreground uppercase">
+              {user?.name ? user.name.substring(0, 2) : "JD"}
+            </AvatarFallback>
           </Avatar>
           <div className="flex-1 text-center sm:text-left">
-            <h1 className="text-2xl font-bold">John Doe</h1>
-            <p className="text-muted-foreground">Premium Member • Joined March 2024</p>
+            <h1 className="text-2xl font-bold">{user?.name || "John Doe"}</h1>
+            <p className="text-muted-foreground">{user ? "Premium Member" : "Guest"} • Joined March 2024</p>
           </div>
           <div className="flex items-center gap-3 w-full sm:w-auto mt-4 sm:mt-0">
             <Button variant="outline" className="w-full sm:w-auto">
@@ -50,7 +52,7 @@ export function ProfilePage() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Email Address</p>
-                  <p className="text-sm font-medium">john.doe@example.com</p>
+                  <p className="text-sm font-medium">{user?.email || "john.doe@example.com"}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
