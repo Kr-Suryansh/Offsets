@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, LogOut, Moon, Settings, Sun, TrendingUp, TrendingDown, User, ChevronDown, BarChart3 } from "lucide-react"
+import { Bell, LogOut, Moon, Settings, Sun, TrendingUp, TrendingDown, User, ChevronDown, BarChart3, Link2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -14,7 +14,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 
-type View = "portfolio" | "tax-saver" | "tax-gain" | "tax-loss" | "profile" | "settings"
+type View = "portfolio" | "tax-saver" | "tax-gain" | "tax-loss" | "profile" | "settings" | "groww"
 
 interface NavbarProps {
   currentView: View
@@ -97,6 +97,20 @@ export function Navbar({ currentView, onViewChange, onLogout, user }: NavbarProp
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            <Button
+              variant="ghost"
+              onClick={() => onViewChange("groww")}
+              className={cn(
+                "text-sm font-medium gap-2",
+                currentView === "groww"
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Link2 className="size-4" />
+              Groww
+            </Button>
           </nav>
         </div>
 

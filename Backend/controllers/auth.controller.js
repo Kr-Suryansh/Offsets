@@ -1,139 +1,95 @@
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const bcrypt  = require('bcryptjs');
+const jwt     = require('jsonwebtoken');
+const User    = require('../models/User');
 
-const getJwtSecret = () => process.env.JWT_SECRET || 'fallback_secret_key_123';
+const JWT_EXPIRES = '7d';
 
-/**
- * Register a new user
- */
+function signToken(userId, res, statusCode = 200) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) return res.status(500).json({ message: 'Server misconfiguration' });
+
+  const token = jwt.sign({ user: { id: userId } }, secret, { expiresIn: JWT_EXPIRES });
+  return { token };
+}
+
 exports.register = async (req, res) => {
   const { name, email, password, taxBracket } = req.body;
+  if (!name || !email || !password) {
+    return res.status(400).json({ message: 'name, email and password are required' });
+  }
 
   try {
-    // Check if user exists
-    let user = await User.findOne({ email });
-    if (user) {
-      return res.status(400).json({ message: 'User already exists' });
+    if (await User.findOne({ email })) {
+      return res.status(409).json({ message: 'Email already registered' });
     }
 
-    user = new User({
-      name,
-      email,
-      password,
-      taxBracket: taxBracket || 30
+    const hashed = await bcrypt.hash(password, 12);
+    const user   = await User.create({ name, email, password: hashed, taxBracket: taxBracket || 30 });
+    const { token } = signToken(user.id, res);
+
+    return res.status(201).json({
+      token,
+      user: { id: user.id, name: user.name, email: user.email, taxBracket: user.taxBracket },
     });
-
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(password, salt);
-
-    await user.save();
-
-    // Create payload
-    const payload = {
-      user: {
-        id: user.id
-      }
-    };
-
-    // Sign Token
-    jwt.sign(
-      payload,
-      getJwtSecret(),
-      { expiresIn: '5 days' },
-      (err, token) => {
-        if (err) throw err;
-        res.status(201).json({ 
-          token, 
-          user: { id: user.id, name: user.name, email: user.email, taxBracket: user.taxBracket }
-        });
-      }
-    );
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error('register error:', err.message);
+    return res.status(500).json({ message: 'Server error' });
   }
 };
 
-/**
- * Login user
- */
 exports.login = async (req, res) => {
   const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ message: 'email and password are required' });
+  }
 
   try {
-    let user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ message: 'Invalid Credentials' });
+    const user = await User.findOne({ email });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid Credentials' });
-    }
-
-    const payload = {
-      user: {
-        id: user.id
-      }
-    };
-
-    jwt.sign(
-      payload,
-      getJwtSecret(),
-      { expiresIn: '5 days' },
-      (err, token) => {
-        if (err) throw err;
-        res.json({ 
-          token, 
-          user: { id: user.id, name: user.name, email: user.email, taxBracket: user.taxBracket }
-        });
-      }
-    );
+    const { token } = signToken(user.id, res);
+    return res.json({
+      token,
+      user: { id: user.id, name: user.name, email: user.email, taxBracket: user.taxBracket },
+    });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error('login error:', err.message);
+    return res.status(500).json({ message: 'Server error' });
   }
 };
 
-/**
- * Get current logged in user
- */
 exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
-    res.json(user);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    return res.json(user);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
+    console.error('getMe error:', err.message);
+    return res.status(500).json({ message: 'Server error' });
   }
 };
 
-/**
- * Change user password
- */
 exports.changePassword = async (req, res) => {
   const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: 'currentPassword and newPassword are required' });
+  }
 
   try {
-    let user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (!(await bcrypt.compare(currentPassword, user.password))) {
+      return res.status(401).json({ message: 'Incorrect current password' });
     }
 
-    const isMatch = await bcrypt.compare(currentPassword, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Incorrect current password' });
-    }
-
-    const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(newPassword, salt);
+    user.password = await bcrypt.hash(newPassword, 12);
     await user.save();
-
-    res.json({ message: 'Password changed successfully' });
+    return res.json({ message: 'Password updated successfully' });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error('changePassword error:', err.message);
+    return res.status(500).json({ message: 'Server error' });
   }
 };

@@ -1,33 +1,26 @@
 /**
  * taxCalculator.service.js
- * Pure utility service to map and sanitize raw portfolio assets.
+ * Pure utility — computes holding period, STCG/LTCG classification, and unrealized PnL.
+ * No side effects, no external dependencies.
  */
+
+const LTCG_THRESHOLD_DAYS = 365;
 
 /**
- * Maps a generic portfolio array and calculates tax parameters.
- * @param {Array} assets - Array of asset objects
- * @returns {Array} - Sanitized array with holding Period, Classification, Unrealized PnL
+ * @param {Array<{ stockName, buyPrice, currentPrice, buyDate, quantity }>} assets
+ * @returns {Array} assets enriched with holdingPeriod, classification, unrealizedPnL
  */
 exports.calculateTaxParameters = (assets) => {
-  if (!assets || !Array.isArray(assets)) return [];
+  if (!Array.isArray(assets) || assets.length === 0) return [];
 
-  const today = new Date();
+  const today = Date.now();
 
-  return assets.map(asset => {
-    const buyDate = new Date(asset.buyDate);
-    // Difference in milliseconds
-    const diffTime = today.getTime() - buyDate.getTime();
-    // Difference in days
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    
-    // Total days held
-    const holdingPeriod = diffDays;
-    
-    // Classification (STCG < 365, LTCG >= 365)
-    const classification = holdingPeriod >= 365 ? 'LTCG' : 'STCG';
-    
-    // Unrealized PnL = (Current - Buy) * Quantity
-    const unrealizedPnL = (asset.currentPrice - asset.buyPrice) * asset.quantity;
+  return assets.map((asset) => {
+    const holdingPeriod = Math.floor(
+      (today - new Date(asset.buyDate).getTime()) / 86_400_000
+    );
+    const classification = holdingPeriod >= LTCG_THRESHOLD_DAYS ? 'LTCG' : 'STCG';
+    const unrealizedPnL  = (asset.currentPrice - asset.buyPrice) * asset.quantity;
 
     return {
       stockName: asset.stockName,
@@ -37,7 +30,7 @@ exports.calculateTaxParameters = (assets) => {
       quantity: asset.quantity,
       holdingPeriod,
       classification,
-      unrealizedPnL
+      unrealizedPnL,
     };
   });
 };

@@ -1,21 +1,17 @@
 const mongoose = require('mongoose');
 
 const connectDB = async () => {
+  const uri = process.env.MONGO_URI;
+  if (!uri) {
+    console.error('MONGO_URI is not set in environment variables');
+    process.exit(1);
+  }
+
   try {
-    let mongoURI = process.env.MONGO_URI;
-    
-    if (!mongoURI) {
-      console.log('No MONGO_URI found in environment. Starting In-Memory MongoDB for development...');
-      const { MongoMemoryServer } = require('mongodb-memory-server');
-      const mongoServer = await MongoMemoryServer.create();
-      mongoURI = mongoServer.getUri();
-    }
-    
-    await mongoose.connect(mongoURI);
-    console.log('MongoDB Connected to', mongoURI);
+    await mongoose.connect(uri);
+    console.log('MongoDB connected');
   } catch (err) {
-    console.error('Error connecting to MongoDB:', err.message);
-    // Exit process with failure
+    console.error('MongoDB connection error:', err.message);
     process.exit(1);
   }
 };

@@ -1,0 +1,5 @@
+.vscode/
+*.log
+aa-backend/node_modules/
+aa-backend/dist/
+aa-backend/.env

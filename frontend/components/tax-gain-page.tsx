@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { TrendingUp, RefreshCw, Sparkles, ChevronDown, ChevronUp, Clock, Code2 } from "lucide-react"
+import { TrendingUp, RefreshCw, Sparkles, ChevronDown, ChevronUp, Clock, Code2, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -20,6 +20,7 @@ interface Recommendation {
 
 function JsonBlock({ data }: { data: any }) {
   const [open, setOpen] = useState(false)
+  if (!data) return null
   return (
     <Card className="border-dashed">
       <CardHeader className="pb-2 cursor-pointer" onClick={() => setOpen(v => !v)}>
@@ -50,9 +51,11 @@ export function TaxGainPage() {
   const [loading, setLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const loadData = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) setIsRefreshing(true)
+    setError(null)
     try {
       // Send empty body — backend reads portfolio from DB for this user
       const res = await fetchApi("/tax/harvest-gain", { method: "POST", body: JSON.stringify({}) })
@@ -65,7 +68,8 @@ export function TaxGainPage() {
       }
       setLastUpdated(new Date())
     } catch (err) {
-      console.error(err)
+      const message = err instanceof Error ? err.message : "Something went wrong"
+      setError(message)
     } finally {
       setLoading(false)
       setIsRefreshing(false)
@@ -110,8 +114,26 @@ export function TaxGainPage() {
         </CardContent>
       </Card>
 
+      {/* Empty portfolio state */}
+      {error && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <Wallet className="size-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No Portfolio Data</h3>
+            <p className="text-muted-foreground mb-4 max-w-md">
+              {error.includes("No assets found")
+                ? "You don't have any holdings in your portfolio yet. Add stocks in the Portfolio page first, then come back here to get AI-powered gain harvesting recommendations."
+                : error}
+            </p>
+            <Button variant="outline" asChild>
+              <a href="/">Go to Portfolio</a>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Table */}
-      {loading ? (
+      {!error && (loading ? (
         <div className="flex items-center justify-center py-20"><Spinner className="size-8" /></div>
       ) : (
         <Card>
@@ -147,7 +169,7 @@ export function TaxGainPage() {
             </Table>
           </CardContent>
         </Card>
-      )}
+      ))}
 
       {/* AI Explanation */}
       {explanation && (

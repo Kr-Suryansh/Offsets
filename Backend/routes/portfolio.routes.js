@@ -4,7 +4,7 @@ const auth = require('../middleware/auth');
 const portfolioController = require('../controllers/portfolio.controller');
 
 // @route   POST /api/portfolio/sync
-// @desc    Sync portfolio from broker data
+// @desc    Sync portfolio from AA backend
 // @access  Private
 router.post('/sync', auth, portfolioController.syncPortfolio);
 

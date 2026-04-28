@@ -1,18 +1,19 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { AuthPage } from "@/components/auth-page"
-import { Navbar } from "@/components/navbar"
-import { PortfolioPage } from "@/components/portfolio-page"
-import { TaxSaverPage } from "@/components/tax-saver-page"
-import { TaxGainPage } from "@/components/tax-gain-page"
-import { TaxLossPage } from "@/components/tax-loss-page"
-import { ProfilePage } from "@/components/profile-page"
-import { SettingsPage } from "@/components/settings-page"
-import { fetchApi } from "@/lib/api"
-import { Spinner } from "@/components/ui/spinner"
+import { AuthPage }         from "@/components/auth-page"
+import { Navbar }           from "@/components/navbar"
+import { PortfolioPage }    from "@/components/portfolio-page"
+import { TaxSaverPage }     from "@/components/tax-saver-page"
+import { TaxGainPage }      from "@/components/tax-gain-page"
+import { TaxLossPage }      from "@/components/tax-loss-page"
+import { ProfilePage }      from "@/components/profile-page"
+import { SettingsPage }     from "@/components/settings-page"
+import { GrowwConnectPage } from "@/components/groww-connect-page"
+import { fetchApi }         from "@/lib/api"
+import { Spinner }          from "@/components/ui/spinner"
 
-type View = "auth" | "portfolio" | "tax-saver" | "tax-gain" | "tax-loss" | "profile" | "settings"
+type View = "auth" | "portfolio" | "tax-saver" | "tax-gain" | "tax-loss" | "profile" | "settings" | "groww"
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<View>("auth")
@@ -75,6 +76,7 @@ export default function Home() {
         {currentView === "tax-loss" && <TaxLossPage />}
         {currentView === "profile" && <ProfilePage user={user} />}
         {currentView === "settings" && <SettingsPage />}
+        {currentView === "groww" && <GrowwConnectPage />}
       </main>
     </div>
   )

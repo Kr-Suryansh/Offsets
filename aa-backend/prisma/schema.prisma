@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── User ─────────────────────────────────────────────────────────────────────
+model User {
+  id          String    @id @default(cuid())
+  mobile      String    @unique
+  email       String?   @unique
+  name        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  consents    Consent[]
+  accounts    Account[]
+  holdings    Holding[]
+  transactions Transaction[]
+
+  @@index([mobile])
+}
+
+// ─── Consent ──────────────────────────────────────────────────────────────────
+model Consent {
+  id              String        @id @default(cuid())
+  userId          String
+  aaConsentId     String        @unique   // ID returned by AA provider
+  status          ConsentStatus @default(PENDING)
+  consentHandle   String?                 // Short-lived handle before approval
+  // Encrypted AA access token stored at rest
+  accessTokenEnc  String?
+  validFrom       DateTime?
+  validTo         DateTime?
+  fetchFrom       DateTime?
+  fetchTo         DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dataFetches     DataFetch[]
+
+  @@index([userId])
+  @@index([aaConsentId])
+  @@index([status])
+}
+
+enum ConsentStatus {
+  PENDING
+  ACTIVE
+  PAUSED
+  REVOKED
+  EXPIRED
+}
+
+// ─── Account ──────────────────────────────────────────────────────────────────
+model Account {
+  id          String      @id @default(cuid())
+  userId      String
+  aaAccountId String      @unique   // AA-assigned account reference
+  fipId       String                // Financial Information Provider ID
+  fipName     String?
+  maskedId    String?               // e.g. masked DEMAT number
+  accountType AccountType
+  linkedAt    DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  holdings    Holding[]
+
+  @@index([userId])
+  @@index([fipId])
+}
+
+enum AccountType {
+  EQUITIES
+  MUTUAL_FUND
+  DEPOSIT
+  OTHER
+}
+
+// ─── DataFetch ────────────────────────────────────────────────────────────────
+model DataFetch {
+  id          String      @id @default(cuid())
+  consentId   String
+  sessionId   String      @unique   // AA session ID
+  status      FetchStatus @default(PENDING)
+  fetchFrom   DateTime
+  fetchTo     DateTime
+  requestedAt DateTime    @default(now())
+  completedAt DateTime?
+
+  consent     Consent     @relation(fields: [consentId], references: [id], onDelete: Cascade)
+
+  @@index([consentId])
+  @@index([sessionId])
+  @@index([status])
+}
+
+enum FetchStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+  PARTIAL
+}
+
+// ─── Holding ──────────────────────────────────────────────────────────────────
+model Holding {
+  id          String   @id @default(cuid())
+  userId      String
+  accountId   String
+  isin        String
+  symbol      String?
+  name        String?
+  quantity    Decimal  @db.Decimal(18, 6)
+  avgPrice    Decimal  @db.Decimal(18, 4)
+  currentPrice Decimal? @db.Decimal(18, 4)
+  source      String   @default("AA")
+  asOf        DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, accountId, isin])
+  @@index([userId])
+  @@index([isin])
+}
+
+// ─── Transaction ──────────────────────────────────────────────────────────────
+model Transaction {
+  id          String          @id @default(cuid())
+  userId      String
+  isin        String
+  symbol      String?
+  txType      TransactionType
+  quantity    Decimal         @db.Decimal(18, 6)
+  price       Decimal         @db.Decimal(18, 4)
+  amount      Decimal         @db.Decimal(18, 4)
+  txDate      DateTime
+  source      String          @default("AA")
+  createdAt   DateTime        @default(now())
+
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isin])
+  @@index([txDate])
+}
+
+enum TransactionType {
+  BUY
+  SELL
+  DIVIDEND
+  BONUS
+  SPLIT
+}
